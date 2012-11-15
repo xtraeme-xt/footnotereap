@@ -19,8 +19,8 @@
 ;    This may be overkill since a person can just make the modifications in regedit. Instead
 ;    just create a readme with all the values? Readme is the solution here.
 ; 6. DONE - In the directory it's probably worthwhile to save the URL of the starting grouping for each
-;    set. This will allow easy review. 
-;6a. It may even be worthwhile to grab as much metadata as possible including comments, and 
+;    set. This will allow easy review.
+;6a. It may even be worthwhile to grab as much metadata as possible including comments, and
 ;    other factoids. This can be stored in a .meta file.
 ; 7. DONE - Create a function that runs through all the check items to make sure they're over Then
 ;    correct widget. Basically I'll try to calculate their location, and then get confirmation
@@ -33,8 +33,8 @@
 ; 11. DONE - Configured basic hotkeys using F12 as Pause and END as stop. Perhaps F11 as resume/start?
 ; 12. Scale the Sleeps() based on the persons CPU and connection speed? This is an advanced feature
 ;     for some later point.
-; 13. Create a distributed database with all the ids and add two columns: downloaded and claimed. This 
-;     will allow numerous people to help participate in the project. 
+; 13. Create a distributed database with all the ids and add two columns: downloaded and claimed. This
+;     will allow numerous people to help participate in the project.
 ; 14. Implement an FTP upload feature. This should be spawned as it's own thread or process that doesn't
 ;     block the reaping tool. A low priority background task would be best.
 ; 15. Design the application so in the event of a browser crash it can restore itself. This means all
@@ -45,22 +45,31 @@
 ;    I'm pretty sure it's getting stuck in a WinWaitActive() of some sort. So probably in the MakeActive
 ;    loop
 ; 2. There's a bug with EnableEntireImageDialog() where it asks twice whether or not the dialog is enabled.
-;    Cases that work: 
+;    Cases that work:
 ;    a. Browser is open, FootnoteReap open/closed/reopened, it asks if entireimagedialog is up (saying yes or no)
 ;       works in both cases. It does the right thing.
 ;    b. Browser is closed, FootnoteReap is started first, footnotereap loads a page and then asks, if the dialog
 ;       is up. This is a bug. It should know since it just had to launch a browser that it can't be open.
+; 3. There's an infinite loop somewhere in the main download loop.
+; 4. There may be a race condition where a person pauses and if a person hits start a second afterwards. 
+;    Might want to test for this.
+; 5. The console application breaks the about dialog. Actually the about dialog seems to be broken probably more
+;    due to moving the code around with all the globals at the top and the functions rejiggered to get rid
+;    of the warnings. 
 
 #include <WindowsConstants.au3>
 #include <GuiMenu.au3>
 #include <GUIConstantsEx.au3>
 #include <GuiConstants.au3>
 #include <INet.au3>
+#include <IE.au3>
+#include <file.au3>
 #include <date.au3>
 #include <process.au3>
 #Include <Array.au3>
 #Include <Memory.au3>
-#include <nomadmemory.au3>
+;#include <nomadmemory.au3>
+#include <Console.au3>
 #include <misc.au3>
 #include "_CSVLib.au3"
 
@@ -68,10 +77,411 @@
 #include <StaticConstants.au3>
 #include <ButtonConstants.au3>
 
+;----------------- Global Definitions -----------------
+Const $version = "0.0.1.2"
+
+Dim $answer = 0
+Global $gNT = 1
+Global $gOffset = 172
+Global $gVerbosity
+Global $gCWD = @WorkingDir
+Global $gKeyName = "HKEY_CURRENT_USER\SOFTWARE\FoonoteReaper"
+Global $gChanges = 0
+Global $gChangesLabel
+Global $gButton
+Global $gWindow
+Global $label5
+Global $label6
+Global $gMakeChangesButton
+Global $param1 ;For functions that are called dynamically
+
+;----Establish all app states here----
+Global $gFirstEntry = true
+Global $gInitialized = false ;Used primarily to handle graphical "init" button. This somewhat mimics $gPositionsValid
+Global $gPositionsValid = false ;Are all Firefox footnote.com buttons configured properly? More specifically is $gDownloadPosition correct?
+Global $gSaveImageDialogUp = false
+Global $gPaused = false
+Global $gRunning = false ;the program doesn't have to be executing the download functions so this is necessary
+Global $gBrowserActiveBeforeFootnoteReap = false
+;-------------------------------------
+
+Global $gDebug = true
+Global $gDebugRegSz = "gDebug"
+
+Global $gSleepMultiplier = 1
+Global $gSleepMultiplierRegSz = "gSleepMultiplier"
+
+Global $gSavetoDirectory = ""
+Global $gSavetoDirectoryRegSz = "gSaveToDirectory"
+Global $gCurrentSavetoDirectory = ""
+Global $gCurrentSavetoDirectoryRegSz = "gCurrentSavetoDirectory"
+
+Global $gBaseDomain = "fold3.com"
+Global $gBaseURL = "http://www." & $gBaseDomain & "/"
+Global $gInitialURL = $gBaseURL & "image/#1|7276022" ;old escaped string "http://www.footnote.com/image/{#}1|7276022"
+Global $gPrevURL = "" ; I can dynamically determine if a person was moving fowards or backwards with this information. If the current url and the backbutton leads to the prev url then that means the person is navigating forwards.
+Global $gPrevURLRegSz = "gPrevURL"
+Global $gCurrentURL = $gInitialURL
+Global $gCurrentURLRegSz = "gCurrentURL"
+Global $gCurrentDocumentStartURL = $gInitialURL
+Global $gCurrentDocumentStartURLRegSz = "gCurrentDocumentStartURL"
+
+global $gStartResumeTotalPageCount = 0
+global $gStartResumeTotalPageCountRegSz = "gStartResumeTotalPageCount"
+global $gStartResumeTotalDocCount = 0 
+global $gStartResumeTotalDocCountRegSz = "gStartResumeTotalDocCount"
+
+global $gLoggerEnabled
+global $gLoggerEnabledRegSz = "gLoggerEnabled"
+global $gLoggerIgnoreLevel
+global $gLoggerIgnoreLevelRegSz = "gLoggerIgnoreLevel"
+
+
+;---------footnote button data---------
+Global $gEntireImageButtonKey = "Entire Image"
+Global $gEntireImageButtonRegSz = "gEntireImage"
+Global $gEntireImageButton[2] = [0, 0]
+
+Global $gNextButtonKey = "Next Image"
+Global $gNextButtonRegSz = "gNextButton"
+Global $gNextButton[2] = [0, 0]
+
+Global $gPrevButtonKey = "Previous Image"
+Global $gPrevButtonRegSz = "gPrevButton"
+Global $gPrevButton[2] = [0, 0]
+
+Global $gDownloadButtonKey = "Download"
+Global $gDownloadButtonRegSz = "gDownloadButton"
+Global $gDownloadButton[2] = [0, 0]
+
+Dim $gButtonDictionary[4] = [$gDownloadButtonKey, $gNextButtonKey, $gPrevButtonKey, $gEntireImageButtonKey]
+
+Global Enum Step +1 $EBUTTON_KEY = 0, $EOBJECT, $ETIMER, $EREGSZ
+;                    				  Button Name,           Object,        , Timer,    RegSz
+Dim $gFootnoteButtonArray[4][4] = [[$gButtonDictionary[0], $gDownloadButton, 5, $gDownloadButtonRegSz], _
+		[$gButtonDictionary[1], $gNextButton, 5, $gNextButtonRegSz], _
+		[$gButtonDictionary[2], $gPrevButton, 5, $gPrevButtonRegSz], _
+		[$gButtonDictionary[3], $gEntireImageButton, 5, $gEntireImageButtonRegSz]]
+;--------End footnote button data------
+
+
+;--------Browser details--------------
+Global $gProgramName = "Internet Explorer" ;"Firefox"
+Global $gExeName = "iexplore.exe" ;"firefox.exe"
+Global $gTaskIdentifier = "Internet Explorer" ;"Firefox"
+Global $gRegistryProgramPathSz = "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\iexplore.exe"
+;"HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\FIREFOX.EXE\shell\open\command"
+Global $gBrowserWindowId = -1
+
+Global $gProgramPathSz = "gProgramPath"
+Global $gProgramPath = ""
+
+Dim $gWinPos[2] = [0, 0]
+Dim $gWinSize[2] = [0, 0]
+Dim $gGuiItem[4][4]
+
+Dim $gBrowserWinPos[2] = [0, 0]
+Dim $gBrowserWinSize[2] = [0, 0]
+;----End Browser details-------------
+
+
+;----------- Statistics -------------
+global $gStartResumeSessionPageCount = 0
+global $gStartResumeSessionDocCount = 0
+global $gStartResumeTotalSessionPageCount = 0
+global $gStartResumeTotalSessionDocCount = 0
+;--------- End Statistics -----------
+
+
+;---------GUI elements---------------
+Global $commands
+
+Global $fileitem, $saveitem, $loaditem
+Global $dashitem
+Global $startitem, $pauseitem
+Global $exititem
+
+Global $edit
+Global $registrationitem
+Global $setitem, $downloaditem, $nextitem, $previtem , $entireimageitem 
+Global $checkitem, $checkdownloaditem, $checknextitem, $checkprevitem, $checkentireimageitem
+Global $verifybuttons
+
+Global $help, $readmeitem, $aboutitem 
+
+Global $initializebutton 
+;-------End GUI elements-------------
+
+Global $gCSVArray
+;----------------End Global Definitions-----------------
+
+
+;Global $ENOTHING = 0
+Global Enum Step +2 $EINFINITELOOPDBG=1, $EVERBOSE, $ETRACE, $EASSERT, $EUNHANDLED, $EINTERNAL, $EUSER
+Global Enum Step +2 $ENOTHING = 0, $EUSERVERBOSE = 12
+Global $gDisableLoggerLevels = $ENOTHING
+
+
+Func _ConsoleWrite($string)
+	ConsoleWrite($string)
+	if($gLoggerEnabled) then _Console_Write($string)
+EndFunc
+
+
+Func OnOffOrError($keyname, $valuename)
+	Logger($ETRACE, "OnOffOrError(" & $keyname & "," & $valuename & ")", false)
+	$temp = RegRead($keyname, $valuename)
+	;$error = @Error
+	If $temp = "" AND @Error Then
+		;If $error > 0 Then  $error = -($error + 2 )
+		Logger($EVERBOSE, "$temp: " & $temp & ", @Error: " & @Error, false)
+		return -1
+	EndIf
+	if($temp = "-1") then
+		Logger($EUNHANDLED, "FIX ME: Returning a value of -1 rather than an ERROR as -1!!!!!", true)
+	EndIf
+	return $temp
+EndFunc   ;==>OnOffOrError
+
+
+Func Logger($code, $msg, $bMsgBox, $timeout = 0)
+	;Overall levels will be:
+	; 0. nothing
+	; 1. Infinite loop patterns
+	; 3. Verbose output
+	; 4. 
+	; 5. Traces
+	; 6. 
+	; 7. Asserts
+	; 8.
+	; 9. Unhandled exceptions
+	; 10.
+	; 11. Internal errors
+	; 12. User messages
+	; 13. User level messages.
+	if($gDisableLoggerLevels >= $code and NOT IsLoggerCodeExempt($code)) then return
+	Select
+		Case $code = $EINFINITELOOPDBG
+			_ConsoleWrite($msg)	;the $msg acts as a "pattern" to print
+		Case $code = $EVERBOSE
+			if $bMsgBox then MsgBox(64, "Verbose", $msg, $timeout);
+			_ConsoleWrite("Verbose: " & $msg & @CRLF)
+		Case $code = $ETRACE
+			if $bMsgBox then MsgBox(64, "Trace", $msg & @CRLF, $timeout);
+			_ConsoleWrite("Trace: " & $msg & @CRLF)
+		Case $code = $EASSERT
+			if $bMsgBox then MsgBox(64, "Assert", $msg & @CRLF, $timeout);
+			_ConsoleWrite("Assert: " & $msg & @CRLF)
+		Case $code = $EUNHANDLED ;was 1
+			if $bMsgBox then MsgBox(64, "Unhandled Exception", $msg, $timeout);
+			_ConsoleWrite("Unhandled Exception: " & $msg & @CRLF)
+		Case $code = $EINTERNAL ;was 5
+			if $bMsgBox then MsgBox(48, "Internal Error", $msg, $timeout);
+			_ConsoleWrite("Internal Error: " & $msg & @CRLF)
+		case $code = $EUSERVERBOSE
+			if $bMsgBox then MsgBox(48, "User Verbose", $msg, $timeout);
+			_ConsoleWrite("UVerbose: " & $msg & @CRLF)
+		Case $code = $EUSER
+			if $bMsgBox then MsgBox(48, "Notification", $msg, $timeout);
+			_ConsoleWrite("Notification: " & $msg & @CRLF)
+		Case Else
+			if $bMsgBox then MsgBox(64, "Unknown Error Level:", "(Err#:" & $code & "): " & $msg & @CRLF, $timeout);
+			_ConsoleWrite("Unknown Error Level: (#" & $code & "): " & $msg & @CRLF)
+	EndSelect
+EndFunc   ;==>Logger
+
+Global $gExceptionArray[1]
+Global Enum Step +1 $EADD, $EREMOVE
+Func SetLoggerIgnoreException($newArray, $operation)
+	Logger($ETRACE, "SetLoggerIgnoreException(" & $newArray & ", " & $operation & ")", false)
+	;This routine assumes the user is smart enough to not add duplicates in the same call
+	if(NOT IsArray($newArray)) then return
+	$completed = 0 
+	$newmax = UBound($newArray)-1
+	
+	if($gExceptionArray[0] = "") Then
+		if($operation = $EADD) Then
+			$gExceptionArray[0] = $newArray[0]
+		Else
+			;nothing to remove
+			Return
+		EndIf
+	endif
+	
+	$exceptionmax = UBound($gExceptionArray)-1
+	
+	for $I = 0 to $newmax
+		for $J = 0 to $exceptionmax
+			if($operation = $EREMOVE) Then
+				$newmax = UBound($gExceptionArray)-1
+				if($exceptionMax > $newmax and $J > $newmax) then
+					$exceptionMax = $newmax
+					ExitLoop
+				endif
+			endif
+			if($newArray[$I] < $gExceptionArray[$J]) then
+				if($operation = $EADD) then
+					_ArrayAdd($gExceptionArray, $newArray[$I])
+					$completed += 1
+				Else
+					ExitLoop	; if the value is less than the lowest value it doesn't exist in our exception list
+				EndIf
+			elseif($newArray[$I] = $gExceptionArray[$J]) then
+				if($operation = $EADD) Then
+					ExitLoop 	; it's already in our list
+				Else
+					_ArrayDelete($gExceptionArray, $J)
+					$completed += 1
+				EndIf
+			elseif($newArray[$I] > $gExceptionArray[$exceptionmax]) then
+				if($operation = $EADD) Then
+					_ArrayAdd($gExceptionArray, $newArray[$I])
+					$completed += 1
+					ExitLoop
+				Else
+					ExitLoop  ;if the value is greater than our greatest value it doesn't exist in our exception list
+				EndIf
+			EndIf
+		Next
+	Next
+	_ArraySort($gExceptionArray, 0)
+	;_ArrayDisplay($gExceptionArray, "after SetLoggerIgnoreException()")
+EndFunc
+
+Func RemoveAllLoggerExceptions()
+	Logger($ETRACE, "RemoveAllLoggerExceptions()", false)
+	if($gExceptionArray[0] = "") Then
+		Return	;nothing to do
+	endif
+	ReDim $gExceptionArray[1]
+	$gExceptionArray[0] = ""
+	;_ArrayDisplay($gExceptionArray, "after SetLoggerIgnoreException()")
+EndFunc
+
+Func IsLoggerCodeExempt($code)
+	if($gExceptionArray[0] = "") then return False
+	$max = UBound($gExceptionArray)-1
+	for $I = 0 to $max
+		if($code = $gExceptionArray[$I]) then return True
+	Next
+	return false
+EndFunc
+
+Global $gPushLevels[1]
+Global Enum Step +1 $ENOP, $EPUSH, $EPOP
+Func SetLoggerIgnoreLevel($code, $squelching, $op=$ENOP, $override = false)
+;If $EPOP fails then it will use the $code as the new 
+	Logger($ETRACE, "SetLoggerIgnoreLevel(" & $code & "," & $squelching & ")", false)
+	if($override) then $gDisableLoggerLevels = $code
+	Local $index, $max = UBound($gPushLevels)	
+	if($op <> $ENOP) Then
+		if($op = $EPUSH and $gDisableLoggerLevels <> $code) Then
+			if($gPushLevels[0] = "" and $max = 1) Then
+				$index = 0
+				$gPushLevels[$index] = $gDisableLoggerLevels
+			Else
+				_ArrayAdd($gPushLevels, $gDisableLoggerLevels)
+				$index = $max
+			EndIf
+			;ConsoleWrite($gDisableLoggerLevels & @CRLF)
+			;_ArrayDisplay($gPushLevels, "after SetLoggerIgnoreLevel(push)")
+		elseif($op = $EPOP) Then
+			if($gPushLevels[0] <> "" and $max >= 1) Then
+				$gDisableLoggerLevels = $gPushLevels[$max-1]
+				if($max > 1) then
+					_ArrayDelete($gPushLevels, $max-1)
+				Else
+					$gPushLevels[0] = ""
+				endif
+				;ConsoleWrite($gDisableLoggerLevels & @CRLF)
+				;_ArrayDisplay($gPushLevels, "after SetLoggerIgnoreLevel(pop)")
+				return
+			Else
+				Logger($EVERBOSE, "Nothing to pop, using $code: " & $code, false)
+				;TODO: This is why this is a 
+			endif
+		EndIf
+	endif
+	if($squelching = true) then 
+		;When squelching we only restrict more not less. This is necessary
+		;for the release build when the default log level is very restrictive.
+		if($code > $gDisableLoggerLevels) then 
+			$gDisableLoggerLevels = $code
+		elseif($code <= $gDisableLoggerLevels and $op = $EPUSH) Then
+			;The squelch failed so we need our old level back.
+			_ArrayDelete($gDisableLoggerLevels, $index)
+		endif
+	Else
+		;The setting we read in from the registry determines how low the logger can go
+		if($gLoggerIgnoreLevel > $code) Then
+			if($op = $EPUSH and $gLoggerIgnoreLevel = $gPushLevels[$index]) Then
+				_ArrayDelete($gDisableLoggerLevels, $index)
+			endif
+			$gDisableLoggerLevels = $gLoggerIgnoreLevel
+		Else
+			$gDisableLoggerLevels = $code
+		endif
+	endif
+	;ConsoleWrite($gDisableLoggerLevels & @CRLF)
+EndFunc   ;==>SetLoggerIgnoreLevel
+
+Func PopLoggerIgnoreLevel($squelching=false)
+	Logger($ETRACE, "PopLoggerIgnoreLevel(" & $squelching & ")", false)
+	SetLoggerIgnoreLevel($gDisableLoggerLevels, $squelching, $EPOP)
+EndFunc
+
+Func PushLoggerIgnoreLevel($code, $squelching)
+	Logger($ETRACE, "PushLoggerIgnoreLevel(" & $code & "," & $squelching & ")", false)
+	return SetLoggerIgnoreLevel($code, $squelching, $EPUSH)
+EndFunc 
+
+#cs 
+;------------- Test Code----------------
+;SetLoggerIgnoreLevel($EUSER-1, true)
+SetLoggerIgnoreLevel($EVERBOSE, true)
+Dim $testArray[2] = [$EASSERT, $EINFINITELOOPDBG]
+Dim $testArray2[1] = [$EINFINITELOOPDBG]
+;Dim $testArray3[1] = [$ETRACE]
+;SetLoggerIgnoreException($testArray, $EADD)
+;SetLoggerIgnoreException($testArray2, $EREMOVE)
+;SetLoggerIgnoreException($testArray3, $EADD)
+PushLoggerIgnoreLevel($ETRACE, false)
+PushLoggerIgnoreLevel($EASSERT, false)
+PopLoggerIgnoreLevel()
+PopLoggerIgnoreLevel()
+PopLoggerIgnoreLevel()
+Logger($EINFINITELOOPDBG, "ccccccccccccccccc", false)
+RemoveAllLoggerExceptions()
+;------------- End Test Code----------------
+#ce
+
+
+Global Enum Step +1 $ECLEAN_EXIT = 0, $EPREMATURE_EXIT, $E2_EXIT, $E3_EXIT, $E4_EXIT, $EINTERNALERR_EXIT
+Func CleanupExit($code, $msg, $bMsgBox)
+	Logger($ETRACE, "CleanupExit()", false)
+	;IMPL -- two params? code, message, msgbox and then write location or other details.
+	;the code will determine if we exit (i.e. 5)
+	;Exit(5)  ;worst error
+	;0 is (verbosity just normal clean exit?)
+	;1 is (perhaps the user quitting prematurely?)
+	;2-4 ... ?
+	;5 is internal error
+	Select
+		Case $code = 0
+			if $bMsgBox then MsgBox(48, "Clean Exit", $msg);
+			_ConsoleWrite("Clean Exit: " & $msg)
+		Case $code = 5
+			if $bMsgBox then MsgBox(48, "Internal Error", $msg);
+			_ConsoleWrite("Internal Error Exit: " & $msg)
+	EndSelect
+	Exit($code)
+EndFunc   ;==>CleanupExit
+
+
+
 Global Const $WindowMargin[2] = [16, 36]
 Global Const $MF_BYCOMMAND = 0x00000000
 ;Global Const $MF_OWNERDRAW			= 0x00000100
-
 
 ;===========================================================================================
 ; Function Name: 	FixClientSize
@@ -85,6 +495,7 @@ Global Const $MF_BYCOMMAND = 0x00000000
 ; Author:			DJD
 ;===========================================================================================
 Func FixClientSize(ByRef $size)
+	Logger($ETRACE, "FixClientSize()", false)
 	if(Not IsArray($size)) then return False
 	$size[0] += $WindowMargin[0]
 	$size[1] += $WindowMargin[1]
@@ -128,7 +539,7 @@ EndFunc   ;==>SetOwnerDrawn
 ;================== File Routines =====================
 
 Func _FileSearch($S_ROOT, $S_FILEPATTERN)
-	Logger($ETRACE, "_FileSearch(" & $_ROOT & "," & $S_FILEPATTERN & ")", false)
+	Logger($ETRACE, "_FileSearch(" & $S_ROOT & "," & $S_FILEPATTERN & ")", false)
 	Dim $SEARCH, $FILE, $I, $X, $Y
 	; $s_root - where to start searching from
 	Dim $S_TROOT = $S_ROOT
@@ -258,21 +669,6 @@ EndFunc   ;==>DirInstalledWhere
 
 
 
-Func OnOffOrError($keyname, $valuename)
-	Logger($ETRACE, "OnOffOrError(" & $keyname & "," & $valuename & ")", false)
-	$temp = RegRead($keyname, $valuename)
-	;$error = @Error
-	If $temp = "" AND @Error Then
-		;If $error > 0 Then  $error = -($error + 2 )
-		Logger($EVERBOSE, "$temp: " & $temp & ", @Error: " & @Error, false)
-		return -1
-	EndIf
-	if($temp = "-1") then
-		Logger($EUNHANDLED, "FIX ME: Returning a value of -1 rather than an ERROR as -1!!!!!", true)
-	EndIf
-	return $temp
-EndFunc   ;==>OnOffOrError
-
 
 Func SetArrays()
 	Logger($ETRACE, "SetArrays()", false)
@@ -340,7 +736,7 @@ Func SetCoordinates($buttonName, $timer, $baseKey, $keyname, ByRef $coords)
 			;$label1 = GuiCtrlCreateLabel($counter, 5, 30, 160)
 			GUICtrlSetData($label1, "" & $counter & "")
 			GUISetState()
-			Sleep(1000)
+			Sleep(1000)    ;* $gSleepMultiplier
 			;GUICtrlDelete($label1)
 		Next
 		$coords = MouseGetPos()
@@ -363,11 +759,12 @@ Func SetCoordinates($buttonName, $timer, $baseKey, $keyname, ByRef $coords)
 		;	IsSaveImageDialogUp()
 		;	$gFirstDownloadSet = false
 		;endif
-		if($gSaveImageDialogUp = false) Then	;And $gBrowserActiveBeforeFootnoteReap = false
+		if($gSaveImageDialogUp = false) Then ;And $gBrowserActiveBeforeFootnoteReap = false
 			;NOTE: I have to do it this way instead of using EnableEntireImageDialog() because
 			;      the globals and array values aren't synced yet.
 			MouseClick("Left", $coords[0], $coords[1])
 			$gSaveImageDialogUp = True
+			;TODO: Maybe just have a check after we do this click?
 			;ConsoleWrite("DUSTIN FIND ME");
 		endif
 		
@@ -415,7 +812,7 @@ Func WindowResizedOrMoved($regwrite = false) ;$x = $, $y, $width, $height)
 		$oldRegBrowserWinsize[0] = OnOffOrError($gKeyName, "gWinSizeX")
 		$oldRegBrowserWinsize[1] = OnOffOrError($gKeyName, "gWinSizeY")
 		
-		if(($oldRegBrowserWinSize[0] <> $gBrowserWinSize[0]) or($oldRegBrowserWinSize[1] < $gBrowserWinSize[1] and $oldRegBrowserWinSize[1] <= 400)) Then
+		if(($oldRegBrowserWinsize[0] <> $gBrowserWinSize[0]) or($oldRegBrowserWinsize[1] < $gBrowserWinSize[1] and $oldRegBrowserWinsize[1] <= 400)) Then
 			$changed = True
 		EndIf
 		if(($oldRegBrowserWinpos[0] <> $gBrowserWinPos[0]) or($oldRegBrowserWinpos[1] <> $gBrowserWinPos[1])) Then
@@ -424,7 +821,7 @@ Func WindowResizedOrMoved($regwrite = false) ;$x = $, $y, $width, $height)
 	EndIf
 	
 	if(($regwrite = true and $changed = true) OR _		;We only write when forced (this happens when we set our buttons) and there's been a change of some sort to the window or the registry
-	   ($oldRegBrowserWinpos[0] = -1)) Then    			;If we have nothing then we should get some position information
+			($oldRegBrowserWinpos[0] = -1)) Then ;If we have nothing then we should get some position information
 		RegWrite($gKeyName, "gWinPosX", "REG_DWORD", $gBrowserWinPos[0])
 		RegWrite($gKeyName, "gWinPosY", "REG_DWORD", $gBrowserWinPos[1])
 		RegWrite($gKeyName, "gWinSizeX", "REG_DWORD", $gBrowserWinSize[0])
@@ -572,14 +969,14 @@ Func MakeActive($winState = "")
 	EndIf
 
 	;WinWaitActive($gTaskIdentifier, "", 5)
-	Local $test = 0 
+	Local $test = 0
 	Local $count = 0
 	
 	;Get the window active
-	Logger($EUSERVERBOSE, "Trying to get the window active. Will try for 10 seconds ...", false)
+	Logger($EVERBOSE, "Trying to get the window active. Will try for 10 seconds ...", false)
 	While($gBrowserWindowId = 0 or $gBrowserWindowId = -1)
 		$gBrowserWindowId = WinActivate($gTaskIdentifier)
-		Sleep(500)
+		Sleep(500 * $gSleepMultiplier)
 		$count += 1
 		if($count = 20) Then
 			;HACK: (500*20 = 10,000ms = 10secs) This is to handle dangling processes and orphaned windows
@@ -605,7 +1002,7 @@ Func MakeActive($winState = "")
 			Logger($EUSER, "There appears to be a " & $gTaskIdentifier & " process open, but it's not responding to messages. Please close the process and reload a new instance.", true)
 			return 0
 		EndIf
-		Sleep(50)
+		Sleep(50 * $gSleepMultiplier)
 	Until($test <> 0)
 	WindowResizedOrMoved()
 	;$gBrowserWinSize = WinGetClientSize($gTaskIdentifier)
@@ -614,39 +1011,41 @@ Func MakeActive($winState = "")
 EndFunc   ;==>MakeActive
 
 
-Func GetClip(ByRef $clip, $sendCtrlC = false,  $count = "")
+Func GetClip(ByRef $clip, $sendCtrlC = false, $count = "")
 	Logger($ETRACE, "GetClip()", false)
 	
 	;Santize and store old input
 	Local $oldclip = ""
 	if($sendCtrlC) then
-		$oldClip =ClipGet()		
+		$oldclip = ClipGet()
 		Logger($EVERBOSE, "$oldclip: " & $oldclip, false)
-		ClipPut("")		; May want to make sure we have something we can check for.
+		ClipPut("") ; May want to make sure we have something we can check for.
 		Send("^c")
-		Sleep(200)	; give it some time to grab it as the transfer might take a moment
+		Sleep(200 * $gSleepMultiplier) ; give it some time to grab it as the transfer might take a moment
 	endif
 	
 	$clip = ClipGet()
 	$ret = @error
+	;ConsoleWrite("THIS IS THE TEMPCLIP: " & $clip & @CRLF)
 	
 	if($ret <> 0) then
-		if($ret = 1) then 
+		if($ret = 1) then
 			Logger($EVERBOSE, "err#:" & $ret & " clipboard (#" & $count & ") empty clipboard", false)
-		elseif($ret = 2) then 
+		elseif($ret = 2) then
 			Logger($EVERBOSE, "err#:" & $ret & " clipboard (#" & $count & ") non-text entry on clipboard", false)
-		elseif($ret > 2 And $ret <= 4) then 
+		elseif($ret > 2 And $ret <= 4) then
 			Logger($EVERBOSE, "err#:" & $ret & " clipboard (#" & $count & ") cannot access clipboard", false)
-		else 
+		else
 			Logger($EVERBOSE, "err#:" & $ret & " clipboard (#" & $count & ") unknown error", false)
 		endif
 	endif
 	
 	;Retore the original clip
 	if($sendCtrlC) then ClipPut($oldclip)
-		
+	
 	return $ret
-EndFunc
+EndFunc   ;==>GetClip
+
 
 Func GetCurrentURL(ByRef $clip)
 	;TODO: There's still a bug in here where occassionally I don't get the URL bar.
@@ -655,9 +1054,10 @@ Func GetCurrentURL(ByRef $clip)
 	Logger($ETRACE, "GetCurrentURL()", false)
 	Local $count = 0
 	Local $err = 0
-
+	Local $tempClip = ""
+	
 	do
-		Sleep(100)
+		Sleep(130 * $gSleepMultiplier)
 		
 		;BUG: Finally figured out the bug. Flash steals focus. I created a function to give focus back to FF
 		;HackGiveFocusFirefox(). Unfortunately though https://bugzilla.mozilla.org/show_bug.cgi?id=78414
@@ -665,21 +1065,28 @@ Func GetCurrentURL(ByRef $clip)
 		;simplicity I've decided to just use Internet Explorer. For more information also see:
 		;https://www.ibm.com/developerworks/opensource/library/os-78414-firefox-flash/
 		
-		Send("^l", 0)  ; Grab the URL off the clipboard
-		Sleep(100)
+		Send("!d", 0) ; Grab the URL off the clipboard
+		Sleep(150 * $gSleepMultiplier)
 		;Sleep(10000)
-		$err = GetClip($clip, true, $count)
-		if($err <= 1) then ExitLoop ; NOTE: I may have to check for <= 1 because the clip can theoretically be empty
+		$err = GetClip($tempClip, true, $count)
+		;Todo: add in a comment to the user to tell them to click in the URL bar?
+		if(StringCompare($tempClip, "d") = 0) Then
+			Send("^z", 0)
+			sleep(300)
+			$tempClip = ""
+		EndIf
+		;if($err <= 1) then ExitLoop ; NOTE: I may have to check for <= 1 because the clip can theoretically be empty
 		$count += 1
 		if($count > 1) then MakeActive() ; Send("!{TAB}!{TAB}") ;try to get some focus
-		;Todo: add in a comment to the user to tell them to click in the URL bar?
-	until($err = 0 And StringCompare($clip, "") <> 0)
+		
+	until($err = 0 And StringCompare($tempClip, "") <> 0)
+	$clip = $tempClip
 	
 	Logger($EVERBOSE, "$clip: " & $clip, false)
-EndFunc
+EndFunc   ;==>GetCurrentURL
 
 ;grep string for root domain in url bar. If it's footnote.com then everything's fine.
-Func ValidFootnotePage()
+Func ValidFootnotePage($testString = "")
 	;TODO: Two fail states (couldn't make active, not correct page) have two return codes or use @error?
 	Logger($ETRACE, "ValidFootnotePage()", false)
 	
@@ -689,18 +1096,22 @@ Func ValidFootnotePage()
 		return false
 	EndIf
 	
-	GetCurrentURL($clip)
-	Logger($EVERBOSE, "$clip: " & $clip, false)
+	if(StringCompare($testString, "") = 0) then
+		GetCurrentURL($clip)
+		Logger($EVERBOSE, "$clip: " & $clip, false)
+	Else
+		$clip = $testString
+	endif
 	
-	If(StringCompare(StringLower(StringLeft($clip, 30)), "http://www.footnote.com/image/") = 0) Then
+	If(StringCompare(StringLower(StringLeft($clip, 27)), $gBaseURL & "image/") = 0) Then
 		;ClipPut("")
-		$gPrevURL = $gCurrentURL
+		if($gPrevURL <> $gCurrentURL) then $gPrevURL = $gCurrentURL
 		$gCurrentURL = $clip
 		RegWrite($gKeyName, $gPrevURLRegSz, "REG_SZ", $gPrevURL)
 		RegWrite($gKeyName, $gCurrentURLRegSz, "REG_SZ", $gCurrentURL)
 		Logger($EVERBOSE, "$gPrevURL: " & $gPrevURL, false)
 		Logger($EVERBOSE, "$gCurrentURL: " & $gCurrentURL, false)
-		return True		
+		return True
 	EndIf
 	return false
 EndFunc   ;==>ValidFootnotePage
@@ -736,33 +1147,34 @@ EndFunc   ;==>GUIUpdate
 
 Func _EnableOrDisableEntireImageDialog($state, $bForce = false)
 	Logger($ETRACE, "_EnableOrDisableEntireImageDialog()", false)
-	Dim $defaultButtonValues[2] = [0,0]
+	Dim $defaultButtonValues[2] = [0, 0]
 	if(Not $bForce) Then
 		If(($gSaveImageDialogUp = true and $state = true) Or _
-		   ($gSaveImageDialogUp = false and $state = false)) then 
-				return false
+				($gSaveImageDialogUp = false and $state = false)) then
+			return false
 		EndIf
 	Endif
-	if($gDownloadButton = $defaultButtonValues Or NOT $gPositionsValid) then 
-		return False
+	if(($gDownloadButton[0] = $defaultButtonValues[0] and $gDownloadButton[1] = $defaultButtonValues[1]) Or _ 
+		NOT $gPositionsValid) then
+		  return False
 	EndIf
 	$gSaveImageDialogUp = $state
 	;if($gBrowserActiveBeforeFootnoteReap = true) then
 	MouseClick("Left", $gDownloadButton[0], $gDownloadButton[1])
 	return true
-EndFunc
+EndFunc   ;==>_EnableOrDisableEntireImageDialog
 
 
 Func EnableEntireImageDialog()
 	Logger($ETRACE, "EnableEntireImageDialog()", false)
 	return _EnableOrDisableEntireImageDialog(true)
-EndFunc
+EndFunc   ;==>EnableEntireImageDialog
 
 
 Func DisableEntireImageDialog()
 	Logger($ETRACE, "DisableEntireImageDialog()", false)
 	return _EnableOrDisableEntireImageDialog(false)
-EndFunc
+EndFunc   ;==>DisableEntireImageDialog
 
 ;======================= SETTER FUNCTIONS ========================
 ;Everything is based off the Download Button Position so long as this is set everything else is probably good
@@ -775,14 +1187,14 @@ Func GenericSetButtonPosition(ByRef $buttonKey, ByRef $regSz, ByRef $obj, $winSt
 		;$gRunning & NOT $gPaused
 		;t t -> the app is running	(NEED TO HANDLE THIS CASE -- But is there the chance we might need this when the browser crashes? Shouldn't be load does it's own thing.
 		;t f -> the app is running and paused (ok to reset in this mode)
-		;f t -> the app isn't running and paused (this is an error and should never happen)
-		;f f -> the app isn't running nor is it paused (idle case, ok to reset in this mode)
+		;f t -> the idle state, ok to reset in this mode 
+		;f f -> the app isn't running, but it is paused (basically the same as "t f" (not an error case because the main loop exits on pause now))
 		if($gRunning and NOT $gPaused) Then
 			Logger($EUSER, "Pause script execution before trying to change the button positions", false)
 			Return
 		EndIf
 		;ConsoleWrite("Dustin find this: " & GUICtrlGetState($initializebutton))
-		if(BitAnd(GUICtrlGetState($initializebutton),$GUI_SHOW) > 0) Then
+		if(BitAnd(GUICtrlGetState($initializebutton), $GUI_SHOW) > 0) Then
 			$runpauseCase = True
 			GuiCtrlSetState($initializebutton, $GUI_HIDE)
 		EndIf
@@ -796,6 +1208,7 @@ Func GenericSetButtonPosition(ByRef $buttonKey, ByRef $regSz, ByRef $obj, $winSt
 	$timer = GetArrayValue($buttonKey, $ETIMER)
 	SetCoordinates($buttonKey, $timer, $gKeyName, $regSz, $obj)
 	SyncArrayAndGlobals()
+	;if($gRunning = false AND ($gInitialized = true OR $gPaused = true)) then
 	if(($gInitialized = false and $skipClosingInitializeCheck = false) Or $runpauseCase) then
 		GuiCtrlSetState($initializebutton, $GUI_SHOW)
 	endif
@@ -827,19 +1240,23 @@ EndFunc   ;==>SetEntireImagePosition
 ;========================= TOGGLE FUNCS ===========================
 Func TogglePause()
 	;There should only be one state where it's neither running nor paused. This is
-	;when a person does a load. So I should probably 
-	SetLoggerIgnoreLevel($ENOTHING)
+	;when a person does a load. So I should probably
+	;SetLoggerIgnoreLevel($ENOTHING)
 	Logger($ETRACE, "TogglePause()", false)
 	if($gRunning) Then
 		$gPaused = True
+		Logger($EUSERVERBOSE, "Please give footnotereap 10 to 20 seconds to finish executing and come to a stop ...", false)
 		;ConsoleWrite("DUSTIN HERE: " & $gPaused)
 		GuiCtrlSetState($initializebutton, $GUI_SHOW)
+#cs
+;It's probably better to just have it exclusively pause. No toggle.
 	Else
 		if($gPaused = true) Then
 			;$gPaused = False
 			;$gRunning = True
 			return StartResume()
 		endif
+#ce
 	EndIf
 EndFunc   ;==>TogglePause
 
@@ -851,7 +1268,7 @@ EndFunc   ;==>TogglePause
 
 
 Func StartResumeInit()
-; returns false if error, true if success	
+	; returns false if error, true if success
 	
 	;Questions: Best time do a loadoldwindow?
 	
@@ -868,21 +1285,21 @@ Func StartResumeInit()
 	;Is our current page we're already handled?
 	
 	Local $max = Ubound($gFootnoteButtonArray) - 1
-	Local $registryInitialized = (CountRegButtonsSet() = ($max+1))
+	Local $registryInitialized = (CountRegButtonsSet() = ($max + 1))
 	Logger($EVERBOSE, CountRegButtonsSet() & "    " & $registryInitialized, false)
 	
 	;Do we have a window up?
 	if(LoadBrowserInstance() = true) Then
 		;TODO: Make sure I set $gBrowserWindowId to 0 in all the spots where I try to LoadBrowserInstance
 		;      when we get a true response when we shouldn't be getting true.
-		$gBrowserWindowId = 0			;We get the gBrowserWindowId in MakeActive()
+		$gBrowserWindowId = 0 ;We get the gBrowserWindowId in MakeActive()
 		$gSaveImageDialogUp = false
 		
 		;We didn't, but we should now. Are we initialized?
-		if($gInitialized Or $gPositionsValid) Then	;$gPositionsValid should always be false here...
+		if($gInitialized Or $gPositionsValid) Then ;$gPositionsValid should always be false here...
 			;the browser must of crashed or been closed. So lets check to make sure now that we
 			;reloaded our window that everything's correct.
-			if(MakeActive() = false) then 
+			if(MakeActive() = false) then
 				Logger($EUSER, "Couldn't restart and activate the browser. Try again.", true) ;TODO: Add timer?
 				return false
 				;TODO: Need to handle this case
@@ -893,18 +1310,18 @@ Func StartResumeInit()
 				;The new window doesn't match the internal array/globals. Lets try to get
 				;old registry values.
 				if(LoadOldWindowState(true)) Then
-					;since we know we crashed we know it has to be off. So lets just enable it? 
+					;since we know we crashed we know it has to be off. So lets just enable it?
 					;TODO: test this ... (fake crash the app and see what happens)
 					$gSaveImageDialogUp = false
-					Sleep(1000)
+					Sleep(1000 * $gSleepMultiplier)
 					ConsoleWrite("DUSTIN: here")
 					EnableEntireImageDialog()
-#cs
-					if($gSaveImageDialogUp = true) then
+					#cs
+						if($gSaveImageDialogUp = true) then
 						;internally it's true so it won't toggle properly without a force
 						_EnableOrDisableEntireImageDialog(true, true)
-					EndIf
-#ce				
+						EndIf
+					#ce
 				Else
 					;We can't continue till we know where the buttons are
 					VerifyButtons(0)
@@ -921,13 +1338,13 @@ Func StartResumeInit()
 		if($gInitialized And WindowResizedOrMoved()) Then
 			;REPRO: delete registry, Initialize, resize window, click Start/Resume
 			;		Perhaps change the notification to, "The window has changed. Do you want to restore the old window size and position? Clicking 'Yes' will reload the old positions."
-#cs
-			If(MsgBox(4, "Confirmation Dialog", "Footnote Reaper appears to be initialized. Clicking 'Yes' will reload everything. Continue?") = 7) Then
+			#cs
+				If(MsgBox(4, "Confirmation Dialog", "Footnote Reaper appears to be initialized. Clicking 'Yes' will reload everything. Continue?") = 7) Then
 				return
-			EndIf
-			$gInitialized = False
-			$gPositionsValid = false
-#ce
+				EndIf
+				$gInitialized = False
+				$gPositionsValid = false
+			#ce
 		EndIf
 	EndIf
 	
@@ -940,12 +1357,13 @@ Func StartResumeInit()
 			$loadSuccessful = LoadOldWindowState(true)
 		EndIf
 
-		;BUG: There's a bug where if a person chooses to not reload everything that it doesn't 
+		;BUG: There's a bug where if a person chooses to not reload everything that it doesn't
 		;     enable the "Save Image" and "Entire Image" dialog
 		;Previously just Initialize() which defaults to maximizing the screen (decided I don't like that)
 		$ret = Initialize(false, "", false, true)
 		If($ret <> false) Then
-			VerifyButtons(_Iif($loadSuccessful, 0, 1)) ;_Iif($gSaveImageDialogUp = true And $ret <>2, 0, 1)
+			VerifyButtons(_Iif($loadSuccessful, 0, 1), false) ;_Iif($gSaveImageDialogUp = true And $ret <>2, 0, 1)
+			;GuiCtrlSetState($initializebutton, $GUI_HIDE)
 			DirectoryManager()
 			$gInitialized = true
 			$gFirstEntry = false
@@ -960,46 +1378,52 @@ Func StartResumeInit()
 		EndIf
 	EndIf
 	return true
-EndFunc
+EndFunc   ;==>StartResumeInit
 
 Func MonthNameToNumber($monthName, $prependZero = false)
 	Logger($ETRACE, "MonthNameToNumber()", false)
+	if( StringLeft($monthName, 1) = "0" Or StringLeft($monthName, 1) = "1") then return $monthName
 	$month = 0
-	Select 
-        Case $monthName = "january"
-            $month = 1
-        Case $monthName = "february"
-            $month = 2
-        Case $monthName = "march"
-            $month = 3
-        Case $monthName = "april"
-            $month = 4
-        Case $monthName = "may"
-            $month = 5
-        Case $monthName = "june"
-            $month = 6
-        Case $monthName = "july"
-            $month = 7
-        Case $monthName = "august"
-            $month = 8
-        Case $monthName = "september"
-            $month = 9
-        Case $monthName = "october"
-            $month = 10
-        Case $monthName = "november"
-            $month = 11
-        Case $monthName = "december"
-            $month = 12
+	Select
+		Case $monthName = "january"
+			$month = 1
+		Case $monthName = "february"
+			$month = 2
+		Case $monthName = "march"
+			$month = 3
+		Case $monthName = "april"
+			$month = 4
+		Case $monthName = "may"
+			$month = 5
+		Case $monthName = "june"
+			$month = 6
+		Case $monthName = "july"
+			$month = 7
+		Case $monthName = "august"
+			$month = 8
+		Case $monthName = "september"
+			$month = 9
+		Case $monthName = "october"
+			$month = 10
+		Case $monthName = "november"
+			$month = 11
+		Case $monthName = "december"
+			$month = 12
 	EndSelect
 	if($prependZero And $month < 10) then $month = "0" & $month
 	return $month
-EndFunc
+EndFunc   ;==>MonthNameToNumber
 
-Func CreateNewDirectory()
+Global $gDynamicCreateNewDirectory = true
+Func GetDirectoryNameFromURL($url)
 	;strlen(http://www.footnote.com/image/#1) = 33
-	Logger($ETRACE, "CreateNewDirectory()", false)
-	Local $id = StringTrimLeft($gCurrentURL, 33)
+	;strlen(http://www.fold3.com/image/#1 = 30
+	Local $len = StringLen($gBaseURL & "image/#1") + 1
+	Local $id = StringTrimLeft($url, $len)	;gCurrentURL
 	Local $array = 0
+	Local $dir = ""
+	Local $ret = 0 
+	Local $year, $month, $docid, $location
 	
 	$arraySearch = _CSVSearch($gCSVArray, $id, "|")
 	;_ArrayDisplay($arraySearch, 'Your file with "|" as delimiter')
@@ -1009,24 +1433,100 @@ Func CreateNewDirectory()
 	
 	Logger($EUSER, "Found new document id#: " & $id, false)
 	if($array <> 0 And IsArray($array) And $array[0] > 0) Then
-		Local $year = $array[2] ;[1]
-		Local $month = $array[3] ;[2]
-		
-		if($year = "[illegible]") Then $year = "xxxx"
-		if($month = "[illegible]") Then 
-			$month = "xx"
-		else 
-			$month = MonthNameToNumber($month, true)
-		EndIf
-			
-		Local $dir = $gSavetoDirectory & "\" & $array[1] & " - " & $year & "." & $month & " - " & $array[4]
-		Logger($EUSER, "Creating directory: " & $dir, true)
-		DirCreate($dir)
+		$year = $array[2] ;[1]
+		$month = $array[3] ;[2]
+		$docid = $array[1]
+		$location = $array[4]
+		if($docid <> $id) then Logger($EUSERVERBOSE, "Data mismatch in CSV. $docid (" & $docid & ") isn't the same as $id (" & $id & ").", true)
 	Else
-		Logger($EUNHANDLED, "Found new document id #( " & $id & ") that doesn't exist in footnote CSV database. Skipping entry.", true)
+		;Logger($EUNHANDLED, "Found new document id #( " & $id & ") that doesn't exist in footnote CSV database. Skipping entry.", true)
+		if($gDynamicCreateNewDirectory) then
+			;Only notify the user once per session*
+			;TODO: Try to automate closing any extra tabs?
+			Local $timeout = 0
+			if(OnOffOrError($gKeyName, "gDynamicCreateNewDirectory") = 1) then $timeout = 120
+			Logger($EUSER, "Since the CSV is missing data about document (#" & $id & "). We need to dynamically fetch the data from the browser. To do this requires there be only one tab active. Please close all other open tabs." & @CRLF & "(Note: this feature only works with IE 9 and greater)", true, $timeout)
+			RegWrite($gKeyName, "gDynamicCreateNewDirectory", "REG_DWORD", true)
+			$gDynamicCreateNewDirectory = False
+		endif
+			
+		$oIE = _IEAttach($gBrowserWindowId, "HWND") 
+		;MsgBox(0, "The URL", _IEPropertyGet ($oIE, "locationurl"))
+		$bodyText = _IEBodyReadText($oIE)
+		;ConsoleWrite($bodyText)
+		
+		$yearArray = StringRegExp($bodyText, "Year:\s*(\d+)", 1)
+		if(@error > 0) then 
+			;Logger($EUSER, @error, 0)
+			$year = "xxxx"
+		Else
+			$year = $yearArray[0]
+		endif
+		$monthArray = StringRegExp($bodyText, "Month Season Number:\s*(\d+)", 1)
+		if(@error > 0) then 
+			;Logger($EUSER, @error, 1)
+			$month = "xx"
+		Else
+			$month = $monthArray[0]
+		endif
+		$locationArray = StringRegExp($bodyText, "(?m)Location:\s*(.*)\s{2,}$", 1)
+		if(@error > 0) then 
+			;Logger($EUSER, @error, 1)
+			$location = "[BLANK]"
+		Else
+			$location = $locationArray[0]
+		endif
+		$incidentArray = StringRegExp($bodyText, "Incident Number:\s*(\d+)", 1)
+		if(@error > 0) then 
+			;Logger($EUSER, @error, 1)
+			$incident = ""
+		Else
+			$incident = $incidentArray[0]
+		EndIf
+		
+		$docid = $id
+		;ConsoleWrite($year & @CRLF)
+		;ConsoleWrite($month & @CRLF)
+		;ConsoleWrite($location & @CRLF)
+		;ConsoleWrite($incident & @CRLF)
+		if($incident <> "") Then
+			$location = $location & " (#" & $incident & ")"
+			$location = StringRegExpReplace($location, "&", "and")
+			$location = StringRegExpReplace($location, '"', "''")
+		endif
+		;SetError(1)
 	endif
-	;_CSVGetRecords($gCWD & "\bluebook\bluebook-page1docs.psv", -1, -1, 1)
+	
+	;Windows doesn't allow files with periods and no subsequent characters at the end of the filename.
+	$location = StringRegExpReplace($location, "(?m)\.$", "")
+	
+	if(StringCompare($year, "[illegible]") = 0 or StringCompare($year,"[blank]") = 0) Then $year = "xxxx"
+	if(StringCompare($month, "[illegible]") = 0 or StringCompare($month, "[blank]") = 0 or $month = "0") Then
+		Logger($EUSERVERBOSE, $month, true)
+		$month = "xx"
+	else
+		$month = MonthNameToNumber($month, true)
+	EndIf
+	
+	$dir = $gSavetoDirectory & "\" & $year & "." & $month & " - " & $docid & " - " & $location
+	return $dir
 EndFunc
+
+
+Func CreateNewDirectory()
+	Logger($ETRACE, "CreateNewDirectory()", false)
+	Local $dir = GetDirectoryNameFromURL($gCurrentURL)
+	Logger($EUSER, "Creating directory: " & $dir, false)
+
+	if(Not FileExists($dir)) Then $ret = DirCreate($dir)
+	if(FileExists($dir)) Then
+		$gCurrentSavetoDirectory = $dir
+		RegWrite($gKeyName, $gCurrentSavetoDirectoryRegSz, "REG_SZ", $gCurrentSavetoDirectory)
+	EndIf
+	
+	return $dir
+	;_CSVGetRecords($gCWD & "\bluebook\bluebook-page1docs.psv", -1, -1, 1)
+EndFunc   ;==>CreateNewDirectory
 
 
 Func DirectoryManager()
@@ -1034,36 +1534,233 @@ Func DirectoryManager()
 	Local $temp = ""
 	if(StringCompare($gSavetoDirectory, "") <> 0 and FileExists($gSavetoDirectory)) then return
 	Do
-		$temp = FileSelectFolder("Where would you like to save the footnote.com image files?", "", 5, @MyDocumentsDir) ;$FileMask, 
+		$temp = FileSelectFolder("Where would you like to save the " & $gBaseDomain & " image files?", "", 5, @MyDocumentsDir) ;$FileMask,
 	Until($temp <> "" and @error <> 1)
 	if(FileExists($temp)) then
 		$gSavetoDirectory = $temp
 		RegWrite($gKeyName, $gSavetoDirectoryRegSz, "REG_SZ", $gSavetoDirectory)
 	endif
+EndFunc   ;==>DirectoryManager
+
+
+Func SetSaveDialogDirectory($dir, $clip)
+	Send($dir, 1)
+	Send("{ENTER}", 0)
+	Sleep(500 * $gSleepMultiplier)
+	if(WinExists("Select location for download")) Then
+		Send("^a",0)
+		Send($clip, 1)
+	EndIf
+	;Logger($EUSERVERBOSE, "leaving SetSaveDialogDirectory(" & $dir & ", " & $clip & ")", false)
 EndFunc
 
-
+;Global $testOnce = true
+Global $gDirectoryNotSet = false
 Func StartDownloadImage()
+	;Return codes: 0 error, 1 downloaded an image, 2 created a directory and downloaded image, 3 skipped a file.
+	;seterror = 1, when we had to break out of the loop (possible event when a persons internet connection goes down)
 	;Do a check to make sure this is set?
-	Logger($ETRACE+1, "StartDownloadImage()", false)
+	Logger($ETRACE, "StartDownloadImage()", false)
 	Local $clip = ""
+	Local $dir = ""
+	Local $lastFileSize = 0
+	Local $currentFileSize = 0
+	Local $origsecs = 0
+	Local $count = 0
+	Local $retCode = false
+	Local $newurl = ""
+	
+	do
+		GetCurrentURL($newurl)
+		;ConsoleWrite("Is this where we're stuck?")
+		Sleep(200 * $gSleepMultiplier)
+		if($count = 15) then return $retCode
+		$count += 1
+		;creating a few "text" loop patterns will help me locate where we're getting stuck
+		Logger($EINFINITELOOPDBG, "44", true) 
+	until(StringCompare($newurl, "") <> 0 And ValidFootnotePage($newurl))
+	$gCurrentURL = $newurl
+	$count = 0
+	
+	Logger($EUSERVERBOSE, "Currently working on URL: " & $gCurrentURL, false)
 	MouseClick("left", $gEntireImageButton[0], $gEntireImageButton[1])
-	Sleep(1000)
+	Sleep(1000 * $gSleepMultiplier)
+	while (Not WinExists("Select location")) ; or $testOnce = true) 
+		;$testOnce = false
+		;To handle the: 
+		;	"Oops, we couldn't load information about this image"
+		; And more common,
+		; 	"We're sorry, it is taking longer than expected to load information about this image."
+		; We should just try clicking to go back. Maybe we can also try adding another button for 
+		; "close" and "try again"? That would be hard though because we don't know where they are
+		; precisely.
+		$count += 1
+		if($count = 2) then 
+			MouseClick("left", $gPrevButton[0], $gPrevButton[1])
+		elseif($count = 10) Then
+			Return $retCode
+		endif
+		IsSaveImageDialogUp(true)
+		Logger($EUSERVERBOSE, "Didn't get the 'Select Location' dialog ... trying to work back to a good state", false, 10)
+		$gSaveImageDialogUp = false
+		EnableEntireImageDialog()
+		Sleep(1000 * $gSleepMultiplier)
+		MouseClick("left", $gEntireImageButton[0], $gEntireImageButton[1])
+		Logger($EINFINITELOOPDBG, "zz", true) 
+		Sleep(1000 * $gSleepMultiplier)
+	Wend
 	GetClip($clip, true)
 	;BROWSER DEPENDENT ...
 	;Send("{Tab}{Tab}{Tab}{ENTER}",0)
-	Consolewrite("clip: " & $clip & @CRLF)
+	;Consolewrite("clip: " & $clip & @CRLF)
+	
+	;TODO: On mom's box during the first init this came out as "Page 1" not "Page 1.jpg" causing it to think we had case #2
 	if(StringCompare($clip, "Page 1.jpg") = 0) then
 		;Create new directory
 		$gCurrentDocumentStartURL = $gCurrentURL
 		RegWrite($gKeyName, $gCurrentDocumentStartURLRegSz, "REG_SZ", $gCurrentDocumentStartURL)
-		CreateNewDirectory()
+		$dir = CreateNewDirectory()
+		;if(@ERROR = 1) then
+		;EndIf
+		SetSaveDialogDirectory($dir, $clip)
+		$retCode = 2
+	elseif($gStartResumeSessionPageCount = 0 And StringCompare($clip, "Page 1.jpg") <>  0) Then
+		;Need to make sure we have a sane directory
+		
+		;TODO: In what case should I use this? $dir = $gCurrentSavetoDirectory 
+		
+		$dir = GetDirectoryNameFromURL($gCurrentURL)
+		$list = _FileListToArray($gSavetoDirectory)
+		$finalDir = ""
+		
+		;Logger($EUSERVERBOSE, $dir, true)
+		$partiallyCorrectNameArray  = StringRegExp($dir, "(?m)\\([\d{4,}|xxxx].*)$", 1)
+		if(@error > 0) then 
+			Logger($EUSER, @error, 1)
+		Else
+			$partiallyCorrectName = $partiallyCorrectNameArray[0]
+		endif
+		;Logger($EUSER, $partiallyCorrectName, true)
+		
+		$correctLeftHandSide = StringLeft($partiallyCorrectName, 7)
+		$locationArray = StringRegExp($partiallyCorrectName, "(?m)^.*\-\s+\d+\s+\-(.*)$", 1)
+		if(@error > 0) then 
+			Logger($EUSER, @error, 1)
+		Else
+			$correctRightHandSide = $locationArray[0]
+		endif
+		;Logger($EUSERVERBOSE, $correctRightHandSide, true)
+		
+		for $I = 0 to UBound($list)-1
+			if(StringCompare(StringLeft($list[$I], 7), $correctLeftHandSide) = 0 and _ 
+			   StringInStr($list[$I], $correctRightHandSide) <> 0) Then
+				$finalDir = $list[$I]
+				ExitLoop
+			endif
+		next
+		if(StringCompare($finalDir, "") <> 0) Then
+			;We found our directory
+			$dir = $gSavetoDirectory & "\" & $finalDir
+		Else
+			;If all else fails lets just use the best known guess for the last directory
+			if(MsgBox(2, "Warning...", "Starting from a random URL that isn't at 'Page 1.jpg' may result in downloading duplicate files due to inconsistency in directory names. Ignore to proceed") <> 5) Then
+				CleanupExit($EUSER, "Exiting...", false)
+			endif
+			$dir = CreateNewDirectory()
+		endif
+		
+		Logger($EUSERVERBOSE, "Using directory name: " & $dir, false)
+		if(StringCompare($dir, $gCurrentSavetoDirectory) <> 0 and FileExists($dir)) Then
+			$gCurrentSavetoDirectory = $dir
+		endif
+		SetSaveDialogDirectory($dir, $clip)
+	Else
+		;TODO: Need to check if this is our first run. $gCurrentSaveDirectory may not be valid
+		;      if the browser was already open and we're on a page that's not a continuation
+		;      of where we were previously.
+		$dir = $gCurrentSavetoDirectory
+		if($gDirectoryNotSet) Then
+			SetSaveDialogDirectory($dir, $clip)
+		endif
 	endif
+	
+	Local $hitConfirmSaveAs = false
+	$count = 0
+	do
+		WinActivate("Select location")
+		if($count > 2) Then
+			Send($clip, 1)
+			Sleep(1000 * $gSleepMultiplier)
+		endif
+		$count += 1
+		Send("{tab}{tab}{ENTER}",0)
+		Sleep(100 * $gSleepMultiplier)
+		
+		;creating a few "text" loop patterns will help me locate where we're getting stuck
+		Logger($EINFINITELOOPDBG, "st", true) 
+		;TODO: Add generic routine for breaking out if this fails?
+		if(WinExists("Confirm Save As")) then 
+			WinActivate("Confirm Save As")
+			$gDirectoryNotSet = True
+			Send("{Enter}", 0)
+			Sleep(150 * $gSleepMultiplier)
+			Send("{tab}{tab}{tab}{enter}", 0)
+			Sleep(100 * $gSleepMultiplier)
+			Logger($EUSER, "'" & $clip & "' already exists in " & $gCurrentSavetoDirectory & ". Skipping and going to the next...", false)
+			if($retCode <> 2) then $retCode = 3
+			$hitConfirmSaveAs = true
+		EndIf
+	Until (NOT WinExists("Select location for download"))
+	
+	if($hitConfirmSaveAs = false) then 	;Not WinExists("Confirm Save As")
+		;TODO: Need to handle collisions. Particularly the case where I don't get to set the directory
+		;      so when it goes to save "page 2.jpg" since "page 1.jpg" wasn't saved to the directory. 
+		;      The old folder is used.
+		Sleep(200 * $gSleepMultiplier)
+		$origsecs = _DateDiff('s', "2011/07/01 00:00:00", _NowCalc())
+		
+		Local $timeoutHit = false
+		Local $counter = 0
+		do 
+			$lastFileSize = $currentFileSize
+			$currentFileSize = FileGetSize($dir & "\" & $clip)	
+			if($currentFileSize < 10000 AND $counter < 10000) then ;used to be 19456, 15456
+				;infinite loop bug occurs when it's not writing to disk. So $currentFileSize keeps getting set to 0
+				$counter += 1
+				$currentFileSize = $lastFileSize + 1 
+			else 
+				sleep(2000 * $gSleepMultiplier)
+				$diff = _DateDiff('s', "2011/07/01 00:00:00", _NowCalc()) - $origsecs
+				if($diff > 45 And NOT $timeoutHit) then
+					Logger($EUSERVERBOSE, "It's taken over a minute to download the image ... please check your internet connection. Waiting a minute longer before exiting out.", false)
+					$timeoutHit = true
+				EndIf
+				if($diff > 105) then 
+					Logger($EUSERVERBOSE, "Nearly two minutes have passed. Aborting. Please check your internet connection.", false)
+					SetError(1)
+					return 0
+				endif
+			endif
+			;creating a few "text" loop patterns will help me locate where we're getting stuck
+			Logger($EINFINITELOOPDBG, ".", true) 
+			;ConsoleWrite("currentFileSize: " & $currentFileSize & ", lastFileSize: " & $lastFileSize & @CRLF)
+		Until($lastFileSize = $currentFileSize)
+		Logger($EUSER, "Downloading '" & $clip & "' took " & _DateDiff('s', "2011/07/01 00:00:00", _NowCalc()) - $origsecs & " seconds to complete", false)
+		if($retCode <> 2) then $retCode = 1
+	EndIf
+	Sleep(100 * $gSleepMultiplier)
+	MouseClick("left", $gNextButton[0], $gNextButton[1])
+	Sleep(1500 * $gSleepMultiplier)
 	MouseClick("left", $gDownloadButton[0], $gDownloadButton[1])
-	MouseClick("left", $gEntireImageButton[0], $gEntireImageButton[1])
-	sleep(10000)
+	Sleep(700 * $gSleepMultiplier)
+	;MouseClick("left", $gEntireImageButton[0], $gEntireImageButton[1])
+	;sleep(200)
+	;Sleep(10000)
+	return $retCode
 
-EndFunc
+EndFunc   ;==>StartDownloadImage
+
+
 
 Func StartResume()
 	;TODO: This needs to change to become a resume feature for pause/stop. Init
@@ -1075,7 +1772,7 @@ Func StartResume()
 	;      for not only original launch, keeping track of where everything is, and getting
 	;      the user out of a bind if things go south.
 	Logger($ETRACE, "StartResume()", false)
-	Local $ret = 0
+	Local $ret = 0, $downloadRetCode = 0
 	$gPaused = false
 	GuiCtrlSetState($initializebutton, $GUI_HIDE)
 	
@@ -1089,26 +1786,56 @@ Func StartResume()
 
 	if($gRunning = false And $gInitialized = true And $gPositionsValid = true) Then
 		$gRunning = true
-		SetLoggerIgnoreLevel($ETRACE)
+		SetLoggerIgnoreLevel($ETRACE, true)
+		$gStartResumeSessionPageCount = 0
+		$gStartResumeSessionDocCount = 0
+		
 		while($gPaused <> true)
 			$msg = GuiGetMsg()
 			$ret = StateMachine($msg)
-			if($ret <> 0) then 
-				ExitLoop	; quit message
+			if($ret <> 0) then
+				ExitLoop ; quit message
 			EndIf
 
-			StartDownloadImage()
+			Switch(StartDownloadImage())
+				Case 2
+					$gStartResumeSessionDocCount += 1
+					ContinueCase
+				Case 1
+					$gStartResumeSessionPageCount += 1
+				Case 0
+					if(@error = 1) Then
+						;Since we didn't advance the page it should try again ... Should I have a timeout here too?
+					endif
+			EndSwitch
+			
+			;Spawn the FTP tool.
 			;IsNewDocument()
 			;	CreateAndNameDirectory()
 			;FinishDownloadImage()
 			;IsImageDownloaded()
 			; 	AdvancePage()
 			
-			;Make sure nothing bad has happened to our window
-			if(StartResumeInit() = false) then ExitLoop
-			sleep(100)
+			sleep(100 * $gSleepMultiplier)
 		Wend
-		SetLoggerIgnoreLevel($ENOTHING)
+		SetLoggerIgnoreLevel($ENOTHING, false)
+		$gStartResumeTotalSessionPageCount += $gStartResumeSessionPageCount 
+		$gStartResumeTotalPageCount += $gStartResumeSessionPageCount 
+		
+		$gStartResumeTotalSessionDocCount += $gStartResumeSessionDocCount
+		$gStartResumeTotalDocCount += $gStartResumeSessionDocCount
+		RegWrite($gKeyName, $gStartResumeTotalPageCountRegSz, "REG_DWORD", $gStartResumeTotalPageCount)
+		RegWrite($gKeyName, $gStartResumeTotalDocCountRegSz, "REG_DWORD", $gStartResumeTotalDocCount)
+		
+		Logger($EUSER, "Statistics: FootnoteReap handled," & @CRLF & _ 
+						$gStartResumeSessionPageCount & " page(s) across," & @CRLF & _ 
+					    $gStartResumeSessionDocCount & " document(s) since the last pause." & @CRLF & @CRLF & _
+						"Out of:" & @CRLF & _
+						$gStartResumeTotalSessionPageCount & " page(s) across," & @CRLF & _
+						$gStartResumeTotalSessionDocCount & " document(s) this session." & @CRLF & @CRLF & _
+						"Over a grand total of:" & @CRLF & _
+						$gStartResumeTotalPageCount & " page(s) across," & @CRLF & _
+						$gStartResumeTotalDocCount & " document(s) for the lifetime of the application.", false)
 		$gRunning = false
 	EndIf
 	return $ret
@@ -1120,87 +1847,14 @@ EndFunc   ;==>StartResume
 Func DumpAllGlobalStates()
 	Logger($ETRACE, "DumpAllGlobalStates()", false)
 	;TODO: Implement me...
-EndFunc
+EndFunc   ;==>DumpAllGlobalStates
 
 
-Global Enum Step +2 $ENOTHING = -1, $EVERBOSE, $ETRACE, $EASSERT, $EUNHANDLED, $EINTERNAL, $EUSER
-Global Enum Step +2 $EUSERVERBOSE = 10
 
-Global $gDisableLoggerLevels = $ENOTHING
-Func SetLoggerIgnoreLevel($code) 
-	Logger($ETRACE, "SetLoggerIgnoreLevel(" & $code & ")", false)
-	$gDisableLoggerLevels = $code
-EndFunc
-
-
-Func Logger($code, $msg, $bMsgBox, $timeout=0)
-	;Overall levels will be:
-	; 1. Verbose output
-	;
-	; 3. Traces
-	;
-	; 5. Asserts
-	;
-	; 7. Unhandled exceptions
-	;
-	; 9. Internal errors
-	;
-	; 11. User level messages.
-	if($gDisableLoggerLevels >= $code) then return
-	Select
-		Case $code = $EVERBOSE
-			if $bMsgBox then MsgBox(64, "Verbose", $msg, $timeout);
-			ConsoleWrite("Verbose: " & $msg & @CRLF)
-		Case $code = $ETRACE
-			if $bMsgBox then MsgBox(64, "Trace", $msg & @CRLF, $timeout);
-			ConsoleWrite("Trace: " & $msg & @CRLF)
-		Case $code = $EASSERT
-			if $bMsgBox then MsgBox(64, "Assert", $msg & @CRLF, $timeout);
-			ConsoleWrite("Assert: " & $msg & @CRLF)
-		Case $code = $EUNHANDLED ;was 1
-			if $bMsgBox then MsgBox(64, "Unhandled Exception", $msg, $timeout);
-			ConsoleWrite("Unhandled Exception: " & $msg & @CRLF)
-		Case $code = $EINTERNAL ;was 5
-			if $bMsgBox then MsgBox(48, "Internal Error", $msg, $timeout);
-			ConsoleWrite("Internal Error: " & $msg & @CRLF)
-		case $code = $EUSERVERBOSE
-			if $bMsgBox then MsgBox(48, "User Verbose", $msg, $timeout);
-			ConsoleWrite("UVerbose: " & $msg & @CRLF)
-		Case $code = $EUSER
-			if $bMsgBox then MsgBox(48, "Notification", $msg, $timeout);
-			ConsoleWrite("Notification: " & $msg & @CRLF)
-		Case Else
-			if $bMsgBox then MsgBox(64, "Unknown Error Level:", "(Err#:" & $code & "): " & $msg & @CRLF, $timeout);
-			ConsoleWrite("Unknown Error Level: (#" & $code & "): " & $msg & @CRLF)
-	EndSelect
-EndFunc   ;==>Logger
-
-Global Enum Step +1 $ECLEAN_EXIT = 0, $EPREMATURE_EXIT, $E2_EXIT, $E3_EXIT, $E4_EXIT, $EINTERNALERR_EXIT
-Func CleanupExit($code, $msg, $bMsgBox)
-	Logger($ETRACE, "CleanupExit()", false)
-	;IMPL -- two params? code, message, msgbox and then write location or other details.
-	;the code will determine if we exit (i.e. 5)
-	;Exit(5)  ;worst error
-	;0 is (verbosity just normal clean exit?)
-	;1 is (perhaps the user quitting prematurely?)
-	;2-4 ... ?
-	;5 is internal error
-	Select
-		Case $code = 0
-			if $bMsgBox then MsgBox(48, "Clean Exit", $msg);
-			ConsoleWrite("Clean Exit: " & $msg)
-		Case $code = 5
-			if $bMsgBox then MsgBox(48, "Internal Error", $msg);
-			ConsoleWrite("Internal Error Exit: " & $msg)
-	EndSelect
-	Exit($code)
-EndFunc   ;==>CleanupExit
-
-
-Func VerifyButtons($skip = 1)
+Func VerifyButtons($skip = 1, $changeButtonState = true)
 	Logger($ETRACE, "VerifyButtons()", false)
 	
-	GuiCtrlSetState($initializebutton, $GUI_HIDE)
+	if($changeButtonState) then GuiCtrlSetState($initializebutton, $GUI_HIDE)
 	
 	Local $max = Ubound($gFootnoteButtonArray) - 1
 	Local $ret = 0
@@ -1216,15 +1870,15 @@ Func VerifyButtons($skip = 1)
 		MouseMove($object[0], $object[1])
 		
 		;Xtraeme change to msgbox(4...) -- cancel is temporary for bug fixing
-		$ret = MsgBox(3, "Checking Location...", "Is the mouse pointer over the '" & $buttonName & "' button?", 60) 
+		$ret = MsgBox(3, "Checking Location...", "Is the mouse pointer over the '" & $buttonName & "' button?", 60)
 		
 		;Did we time out?
 		if($ret = -1) Then
 			;Yes, let's see if our button data is semi-valid, can we get a "Save Image" dialog up?
-			IsSaveImageDialogUp(true) 
+			IsSaveImageDialogUp(true)
 			if(@error = 1) Then
 				;We timed out and didn't get user feedback so we're absolutely dependent on user information
-				$ret = MsgBox(3, "Checking Location...", "Is the mouse pointer over the '" & $buttonName & "' button?", 0) 
+				$ret = MsgBox(3, "Checking Location...", "Is the mouse pointer over the '" & $buttonName & "' button?", 0)
 			endif
 		endif
 		if($ret = 7) Then
@@ -1233,80 +1887,106 @@ Func VerifyButtons($skip = 1)
 			ExitLoop
 		EndIf
 	Next
+
+	if($changeButtonState) then
+		if($gRunning and NOT $gPaused) Then
+			GuiCtrlSetState($initializebutton, $GUI_HIDE)
+		Else
+			GuiCtrlSetState($initializebutton, $GUI_SHOW)
+		EndIf
+	endif
+
+#cs	
+	if ((NOT $gRunning and $gPaused) or (NOT $gRunning and NOT $gPaused)) then
+		GuiCtrlSetState($initializebutton, $GUI_SHOW)
+	EndIf
+
+	if($gRunning = false and ($gInitialized = true or $gPaused = true)) Then
+		GuiCtrlSetState($initializebutton, $GUI_SHOW)
+	endif
+#ce
 	SyncArrayAndGlobals(1) ; we are storing the values in the array so need to set globals
 EndFunc   ;==>VerifyButtons
 
 ;potential bug where entireimagebutton isn't set properly by calcandsetcoords resulting in infinite loop
 Global $gIsSaveImageDialogUpTries = 0
-Global $gIsSaveImageDialogUpTries2 = 0 
-Func IsSaveImageDialogUp($automated = false, $count = 0, $timeout=60)
-	Logger($ETRACE, "IsSaveImageDialogUp("& $automated & ", " & $count & ", " & $timeout & ")", false)
-	Dim $defaultButton[2] = [0,0]
+Global $gIsSaveImageDialogUpTries2 = 0
+Func IsSaveImageDialogUp($automated = false, $count = 0, $timeout = 60)
+	PushLoggerIgnoreLevel($ENOTHING, false)
+	Logger($ETRACE, "IsSaveImageDialogUp(" & $automated & ", " & $count & ", " & $timeout & ")", false)
+	Dim $defaultButton[2] = [0, 0]
 	Dim $failedRegValues[2] = [-1, -1]
 	if(NOT $automated) then
 		Local $ret = MsgBox(4, "Checking State...", "Is the 'Save Image' dialog containing the 'Entire Image' and 'Select Portion of Image' visible?", $timeout)
 		if($ret = -1) then SetError(1)
 		$gSaveImageDialogUp = _Iif($ret == 6, True, False)
+		;TODO: Is this really appropriate in an Is... function? Especially after a user tells us the state.
 		if($gSaveImageDialogUp = false And $ret <> -1) then
 			EnableEntireImageDialog()
 		endif
 		return $gSaveImageDialogUp
 	Else
 		if($gEntireImageButton[0] <> $defaultButton[0] And $gEntireImageButton[1] <> $defaultButton[1] And _
-		   $gEntireImageButton[0] <> $failedRegValues[0] And $gEntireImageButton[1] <> $failedRegValues[1] And _
-		   $count < 2) Then
+				$gEntireImageButton[0] <> $failedRegValues[0] And $gEntireImageButton[1] <> $failedRegValues[1] And _
+				$count < 2) Then
 			;ConsoleWrite($gEntireImageButton[0] & ", " & $gEntireImageButton[1] & @CRLF)
 			;ConsoleWrite($gDownloadButton[0] & ", " & $gDownloadButton[1] & @CRLF)
 			Switch $count
 				case 1
 					;ConsoleWrite("case #3" & @CRLF)
-					;Since we're here that means our case 0 didn't work ... Maybe 'Save Image' wasn't up? Lets click Download. 
+					;Since we're here that means our case 0 didn't work ... Maybe 'Save Image' wasn't up? Lets click Download.
 					MouseClick("left", $gDownloadButton[0], $gDownloadButton[1])
-					Sleep(600)
+					Sleep(600 * $gSleepMultiplier)
 					ContinueCase
 				case 0
 					;ConsoleWrite("case #2" & @CRLF)
 					;click and see if we get a dialog. If so it was up. Now lets reenable it.
 					MouseClick("left", $gEntireImageButton[0], $gEntireImageButton[1])
-					Sleep(600)
-					If(WinExists("Select location for download") = true) Then	;by www.footnote.com
-						Send("{Tab}{Tab}{Tab}{ENTER}",0)
-						Sleep(100)
+					Sleep(600 * $gSleepMultiplier)
+					If(WinExists("Select location for download") = true) Then ;by www.fold3.com
+						Send("{Tab}{Tab}{Tab}{ENTER}", 0)
+						Sleep(100 * $gSleepMultiplier)
 						$gSaveImageDialogUp = false
-						$gIsSaveImageDialogUptries = $gIsSaveImageDialogUpTries2 = 0
-						return false 	;We can be confident about our choice now.
+						$gIsSaveImageDialogUpTries = $gIsSaveImageDialogUpTries2 = 0
+						return false ;We can be confident about our choice now.
 					EndIf
 			EndSwitch
-			IsSaveImageDialogUp(true, $count+1)
+			IsSaveImageDialogUp(true, $count + 1)
 		Else
 			if($gDownloadButton[0] <> $defaultButton[0] And $gDownloadButton[1] <> $defaultButton[1] And _
-		       $gDownloadButton[0] <> $failedRegValues[0] And $gDownloadButton[1] <> $failedRegValues[1] And _ 
-			   $gIsSaveImageDialogUptries = 0) Then ;count = 2 or $count = 0
-					;if($count = 0) then
-					;ConsoleWrite("case #0" & @CRLF)
-					CalcAndSetCoordsRelativeToDownload()
-					$gIsSaveImageDialogUpTries += 1
-					return IsSaveImageDialogUp(true, _Iif($gEntireImageButton[1] <> $defaultButton[1] And $gEntireImageButton[1] <> $failedRegValues[1], 0, $count+1))
+					$gDownloadButton[0] <> $failedRegValues[0] And $gDownloadButton[1] <> $failedRegValues[1] And _
+					$gIsSaveImageDialogUpTries = 0) Then ;count = 2 or $count = 0
+				;if($count = 0) then
+				;ConsoleWrite("case #0" & @CRLF)
+				CalcAndSetCoordsRelativeToDownload()
+				$gIsSaveImageDialogUpTries += 1
+				return IsSaveImageDialogUp(true, _Iif($gEntireImageButton[1] <> $defaultButton[1] And $gEntireImageButton[1] <> $failedRegValues[1], 0, $count + 1))
 			else
-				if($gIsSaveImageDialogUpTries2 = 0) Then  ;$count = 0 or $count = 1 or $count = 3
+				if($gIsSaveImageDialogUpTries2 = 0) Then ;$count = 0 or $count = 1 or $count = 3
 					;ConsoleWrite("case #1" & @CRLF)
 					$gIsSaveImageDialogUpTries2 += 1
 					;SetLoggerIgnoreLevel($ETRACE)
 					if(LoadOldWindowState(true) = true) Then
 						;SetLoggerIgnoreLevel($ENOTHING)
-						return IsSaveImageDialogUp(true, _Iif($gEntireImageButton[1] <> $defaultButton[1] And $gEntireImageButton[1] <> $failedRegValues[1], 0, $count+1))
+						return IsSaveImageDialogUp(true, _Iif($gEntireImageButton[1] <> $defaultButton[1] And $gEntireImageButton[1] <> $failedRegValues[1], 0, $count + 1))
 					EndIf
 				EndIf
 			endif
-			;Without information about the $gEntireImageButton and no $downloadbutton data we're stuck. 
+			;Without information about the $gEntireImageButton and no $downloadbutton data we're stuck.
 			;We'll have to wait for the user to tell us where things are. This means blocking indefinitely
 			;ConsoleWrite("case #4 giving up" & @CRLF)
-			$gIsSaveImageDialogUptries = $gIsSaveImageDialogUpTries2 = 0
-			return IsSaveImageDialogUp(false, $count+1, 0)
+			$gIsSaveImageDialogUpTries = $gIsSaveImageDialogUpTries2 = 0
+			;fold3.com occassionally outputs a message: 
+			;"Oops, we couldn't load information about this image"
+			;  And more commonly, 
+			;"We're sorry, it is taking longer than expected to load information about this image."
+			;Over time clicking on "Download" eventually causes this to disappear. So I should put a long time out and keep trying.
+			return IsSaveImageDialogUp(false, $count + 1, 60)
+			
 		endif
 	EndIf
-
-EndFunc
+	PopLoggerIgnoreLevel()
+EndFunc   ;==>IsSaveImageDialogUp
 
 
 Global $gFirstInitializePageCall = true
@@ -1323,7 +2003,7 @@ Func InitializePage($checkSaveImageDialogUp = true, $winState = "")
 		Elseif($gBrowserActiveBeforeFootnoteReap And $gFirstEntry = true) Then
 			$allow = true
 		Elseif($checkSaveImageDialogUp) then
-				$allow = True
+			$allow = True
 		EndIf
 		if($allow = true) then
 			if(IsSaveImageDialogUp() = false And @error = 1) Then
@@ -1340,28 +2020,29 @@ Func InitializePage($checkSaveImageDialogUp = true, $winState = "")
 		;and if we don't get a page then we'll open a new tab but only once
 		while(Not ValidFootnotePage())
 			Logger($EUSERVERBOSE, "Opening a new tab page. Waiting 7 seconds to let everything load ...", false)
-			if($count = 0) Then Send("^t", 0); Open a new tab				
-			Send("^l", 0) ; and go to the location bar
-			Send($gCurrentURL, 1)  ;send the URL raw
+			if($count = 0) Then Send("^t", 0); Open a new tab
+			Send("!d", 0) ; "^l" and go to the location bar	
+						; TODO: Need to check for 'd' now instead of 'l'
+			Send($gCurrentURL, 1) ;send the URL raw
 			Logger($EVERBOSE, "Sending $gCurrentURL to the url bar: " & $gCurrentURL, false)
-			sleep(100)
+			sleep(100 * $gSleepMultiplier)
 			Send("{ENTER}", 0) ; now submit the enter
-			Sleep(7000) ; Wait 7 seconds for everything to load
+			Sleep(7000 * $gSleepMultiplier) ; Wait 7 seconds for everything to load
 			$count += 1
 			if($count = 3) Then
 				Logger($EUSER, "Failed to initialize page", true, 5)
 				return false
 			EndIf
 			GetCurrentURL($clip)
-			If(StringCompare(StringLower($clip), "http://www.footnote.com/missing.php") = 0 ) Then
-				if(StringCompare($gPrevURL, $gCurrentURL) <> 0)then
+			If(StringCompare(StringLower($clip), $gBaseURL & "missing.php") = 0) Then
+				if(StringCompare($gPrevURL, $gCurrentURL) <> 0) then
 					Logger($EVERBOSE, "$gPrevURL <> $gCurrentURL", true)
 					$gCurrentURL = $gPrevURL
 				Else
 					Logger($EVERBOSE, "$gPrevURL = $gCurrentURL", true)
 					;TODO: Set this to something from the registry? Or dig through files?
 					$gCurrentURL = $gInitialURL
-				EndIf					
+				EndIf
 			EndIf
 		Wend
 		
@@ -1371,9 +2052,9 @@ Func InitializePage($checkSaveImageDialogUp = true, $winState = "")
 		;send a click to change focus so it doesn't keep the hand icon from grabbing the footnote document causing it to scroll.
 		Send("^", 0)
 		
-		Sleep(4000)
+		Sleep(4000 * $gSleepMultiplier)
 		;$gSaveImageDialogUp = false
-		EnableEntireImageDialog() ;if($count > 1) then 
+		EnableEntireImageDialog() ;if($count > 1) then
 		
 		return true
 	EndIf
@@ -1382,8 +2063,6 @@ EndFunc   ;==>InitializePage
 
 
 Global $gLoadBrowserInstanceFirstCall = true
-Global $gBrowserActiveBeforeFootnoteReap = false
-
 Func LoadBrowserInstance()
 	Logger($ETRACE, "LoadBrowserInstance()", false)
 	If ProcessExists($gExeName) Then
@@ -1395,7 +2074,7 @@ Func LoadBrowserInstance()
 		return False
 	Else
 		$gLoadBrowserInstanceFirstCall = false
-	EndIf	
+	EndIf
 
 	;"HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\FIREFOX.EXE\shell\open\command"
 	$gProgramPath = OnOffOrError($gRegistryProgramPathSz, "")
@@ -1422,7 +2101,8 @@ Func LoadBrowserInstance()
 	If $ret = 0 Then
 		Logger($EINTERNAL, "(ERR# " & $ret & ") Found executable '" & $gProgramPath & "' but failed to run.", true)
 	Else
-		Sleep(350) ;Give the process some time to launch
+		Sleep(350 * $gSleepMultiplier) ;Give the process some time to launch
+		
 	EndIf
 	return true
 EndFunc   ;==>LoadBrowserInstance
@@ -1436,7 +2116,7 @@ Func Initialize( _
 		$checkSaveImageDialogUp = true _
 		)
 	;Return 0 = error, 1 success, 2 success (set downloadposition)
-	Logger($ETRACE, "Initialize(" & $skipSetDownloadPosition & ", " & $winState & ", " & $winMove & ", " & $checkSaveimageDialogUp & ")", false)
+	Logger($ETRACE, "Initialize(" & $skipSetDownloadPosition & ", " & $winState & ", " & $winMove & ", " & $checkSaveImageDialogUp & ")", false)
 
 	LoadBrowserInstance()
 	;TODO: Ensure the user is actually signed in...
@@ -1448,7 +2128,8 @@ Func Initialize( _
 		if(Not $skipSetDownloadPosition) then
 			Local $blogin = false
 			if($ret <> 2) then
-				$blogin = MsgBox(1, "Confirm Login", "Before continuing login to footnote.com") <> 2
+				;TODO: Check do we even get here any more? 
+				$blogin = MsgBox(1, "Confirm Login", "Before continuing login to " & $gBaseDomain) <> 2
 			endif
 			;Logger($ETRACE, "$blogin: " & $blogin & "  $ret: "& $ret, false)
 			If($blogin Or $ret = 2) Then
@@ -1510,10 +2191,10 @@ Func HackGiveFocusFirefox()
 	;has the same bug as FF.
 	Logger($ETRACE, "HackGiveFocusFirefox()", false)
 	if($gDownloadButton[0] <> -1 and $gDownloadButton[0] <> 0 and _
-	   $gDownloadButton[1] <> -1 and $gDownloadButton[1] <> 0) then
-			MouseClick("Left", $gDownloadButton[0], $gDownloadButton[1]-30)
+			$gDownloadButton[1] <> -1 and $gDownloadButton[1] <> 0) then
+		MouseClick("Left", $gDownloadButton[0], $gDownloadButton[1] - 30)
 	EndIf
-EndFunc
+EndFunc   ;==>HackGiveFocusFirefox
 
 
 Func TwosComplementToSignedInt(ByRef $coords)
@@ -1566,6 +2247,9 @@ Func LoadOldWindowState($bForceLoad = false)
 	$gInitialized = false ;unless we get to the end the function things have been modified that can ruin proper init.
 	$gPositionsValid = false ;...
 	
+	Local $sleepMod = OnOffOrError($gKeyName, $gSleepMultiplierRegSz)
+	if($sleepMod <> -1) then $gSleepMultiplier = $sleepMod
+	
 	;This has to be before initialize so we have the right page to load.
 	Local $currentURL = OnOffOrError($gKeyName, $gCurrentURLRegSz)
 	Local $prevURL = OnOffOrError($gKeyName, $gPrevURLRegSz)
@@ -1574,8 +2258,16 @@ Func LoadOldWindowState($bForceLoad = false)
 	if($prevURL <> -1) then $gPrevURL = $prevURL
 	if($gCurrentDocumentStartURL <> -1) then $gCurrentDocumentStartURL = $docStartURL
 	
-	Local $path = OnOfforError($gKeyName, $gSavetoDirectoryRegSz)
-	if($path <> "") then $gSavetoDirectory = $path
+	Local $path = OnOffOrError($gKeyName, $gSavetoDirectoryRegSz)
+	if($path <> "" And $path <> -1) then $gSavetoDirectory = $path
+	Local $currentpath = OnOffOrError($gKeyName, $gCurrentSavetoDirectoryRegSz)
+	if($currentpath <> "" And $currentpath <> -1) then $gCurrentSavetoDirectory = $currentpath
+		
+	;statistics
+	Local $pagesDownloaded = OnOffOrError($gKeyName, $gStartResumeTotalPageCountRegSz)
+	if($pagesDownloaded <> -1) then $gStartResumeTotalPageCount = $pagesDownloaded
+	Local $docsDownloaded = OnOffOrError($gKeyName, $gStartResumeTotalDocCountRegSz)
+	if($docsDownloaded <> -1) then $gStartResumeTotalDocCount = $docsDownloaded
 	
 	if($gInitialized = false) Then
 		if(Not Initialize(true, "", false, false)) then
@@ -1657,7 +2349,7 @@ Func LoadOldWindowState($bForceLoad = false)
 	SyncArrayAndGlobals(1) ;arrays -> globals
 	
 	;CheckParity($gFootnoteButtonArray, 0, $gDownloadButton, "gButtonArray and Coords unsynchronized ... (possible error)", true)
-	;TODO: When $bForce = true should we tell the user how everything loaded? 
+	;TODO: When $bForce = true should we tell the user how everything loaded?
 	if($gPositionsValid = true And($successfulLoads - 1) = $max) Then
 		$gInitialized = True
 		Logger($EUSER, "Load successful", _Iif(Not $bForceLoad, true, false))
@@ -1666,11 +2358,29 @@ Func LoadOldWindowState($bForceLoad = false)
 		Logger($EVERBOSE, $max & " " & $successfulLoads & " " & $gPositionsValid, false)
 	EndIf
 	
-	if($gInitialized = false) then
+	;grunning T and gpaused F = hide
+	;grunning T and gpaused T = show
+	;grunning F and gpaused T = (error)
+	;grunning F and gpaused F = (show 	
+	if($gRunning and NOT $gPaused) Then
+		GuiCtrlSetState($initializebutton, $GUI_HIDE)
+	Else
+		if(NOT $gRunning and NOT $gPaused and $gInitialized and $bForceLoad) then
+			GuiCtrlSetState($initializebutton, $GUI_HIDE)
+		else
+			GuiCtrlSetState($initializebutton, $GUI_SHOW)
+		endif
+	EndIf
+
+#cs
+	if($gRunning = false AND ($gInitialized = false OR $gPaused = true)) then
+		Logger($EVERBOSE, "1:" & $gRunning & "   " & $gInitialized & "     " & $gPaused, true)
 		GuiCtrlSetState($initializebutton, $GUI_SHOW)
 	else
+		;Logger($EVERBOSE, "2:" & $gRunning & "   " & $gInitialized & "     " & $gPaused, true)
 		GuiCtrlSetState($initializebutton, $GUI_HIDE)
 	endif
+#ce
 	
 	;Sleep(3000)
 	;$gSaveImageDialogUp = false
@@ -1717,7 +2427,7 @@ Func StateMachine($msg)
 			Else
 				return StartResume()
 			EndIf
-		
+			
 		Case $msg = $startitem
 			return StartResume()
 			
@@ -1739,23 +2449,23 @@ Func StateMachine($msg)
 			
 			;==================== Set Button ==========================
 		Case $msg = $downloaditem
-			If Not MakeActive() Then return 0 ; ContinueLoop
+			If (Not MakeActive() or $gRunning) Then return 0 ; ContinueLoop
 			$gPositionsValid = false
 			SetDownloadPosition()
 			
 		Case $msg = $nextitem
-			If Not MakeActive() Then return 0 ; ContinueLoop
+			If (Not MakeActive() or $gRunning) Then return 0 ; ContinueLoop
 			$gPositionsValid = false
 			SetNextPosition()
 			;Todo: verify is a way to ensure all buttons are set create another function to check non-0'ness as check?
 			
 		Case $msg = $previtem
-			If Not MakeActive() Then return 0 ; ContinueLoop
+			If (Not MakeActive() or $gRunning) Then return 0 ; ContinueLoop
 			$gPositionsValid = false
 			SetPrevPosition()
 			
 		Case $msg = $entireimageitem
-			If Not MakeActive() Then return 0 ; ContinueLoop
+			If (Not MakeActive() or $gRunning) Then return 0 ; ContinueLoop
 			$gPositionsValid = false
 			SetEntireImagePosition()
 			;================= End Set Buttons ========================
@@ -1775,7 +2485,7 @@ Func StateMachine($msg)
 			MouseMove($gEntireImageButton[0], $gEntireImageButton[1])
 			
 		Case $msg = $verifybuttons
-			If Not MakeActive() Then return 0 ; ContinueLoop
+			If (Not MakeActive() or $gRunning) Then return 0 ; ContinueLoop
 			VerifyButtons(0)
 			;=================== End Check Buttons ======================
 			
@@ -1789,20 +2499,22 @@ Func StateMachine($msg)
 				$width = 220
 			EndIf
 			$height = 110
-			Dim $pos = WinGetPos("FootnoteReap")
-			Dim $tempSize = WinGetClientSize("FootnoteReap")
+			Dim $pos = WinGetPos("[TITLE:FootnoteReap; CLASS:AutoIt v3 GUI]") ;("FootnoteReap")
+			Dim $tempSize = WinGetClientSize("[TITLE:FootnoteReap; CLASS:AutoIt v3 GUI]") ;"FootnoteReap")
 			$tempSize[0] += 12
 			$gWindow = GUICreate("The FootNote Reaper", "112", $height, $pos[0] + $tempSize[0], $pos[1], $WS_POPUPWINDOW) ;280x160
-			$label1 = GuiCtrlCreateLabel("The Footnote Reaper", (8 * ($width / 2)) / 100, 3, 100)
+			$label1 = GuiCtrlCreateLabel("The Footnote Reaper ", (8 * ($width / 2)) / 100, 3, 100)
 			GUICtrlSetFont($label1, 14, 800, 4, "Times New Roman")
 			GUICtrlSetColor($label1, 0xff0000)
 			$spacer = 20
-			$lab2h = 36
+			$lab2h = 32 ;36
 			$label2 = GuiCtrlCreateLabel("Created By:  Xtraeme", 5, $lab2h)
 			$lab3h = $lab2h + $spacer
 			$label3 = GuiCtrlCreateLabel("Contact:", 5, $lab3h)
 			$lab4h = $lab3h + $spacer
 			$label4 = GuiCtrlCreateLabel("Website:", 5, $lab4h)
+			$lab45h = $lab4h + $spacer
+			$label45 = GuiCtrlCreateLabel("Version:        " & $version, 5, $lab45h)
 
 			;GUICtrlSetColor($label, 0xff0000)
 			;GUICtrlSetFont($label2, 9, 400, 4)
@@ -1829,10 +2541,16 @@ Func StateMachine($msg)
 			If WinExists("The FootNote Reaper") Then
 				If FileExists(@ProgramFilesDir & "\Internet Explorer\iexplore.exe") Then
 					;Run(@ProgramFilesDir & "\Internet Explorer\iexplore.exe http://wiki.razing.net")
-					_RunDOS("start http://wiki.razing.net")
+					_RunDOS("start http://wiki.razing.net/")
 				EndIf
 			EndIf
-			
+		
+		Case $msg = $readmeitem 
+			If FileExists(@ProgramFilesDir & "\Internet Explorer\iexplore.exe") Then
+				;Run(@ProgramFilesDir & "\Internet Explorer\iexplore.exe http://wiki.razing.net")
+				_RunDOS("start http://wiki.razing.net/index.php/FootnoteReap")
+			EndIf
+		
 		Case $msg = $label5
 			_INetMail("xthaus@yahoo.com", "[FootnoteReaper] ", "Please leave the [FootnoteReaper] in the Subject so my mail filter can sort by it, thanks!")
 
@@ -1840,8 +2558,8 @@ Func StateMachine($msg)
 			If WinExists("The FootNote Reaper") Then
 				$width = 220
 				$height = 110
-				$pos = WinGetPos("FootnoteReap")
-				$tempSize = WinGetClientSize("FootnoteReap")
+				$pos = WinGetPos("[TITLE:FootnoteReap; CLASS:AutoIt v3 GUI]") ;"FootnoteReap")
+				$tempSize = WinGetClientSize("[TITLE:FootnoteReap; CLASS:AutoIt v3 GUI]") ; ("FootnoteReap")
 				$tempSize[0] += 12
 				GUICtrlDelete($gButton)
 				GUICtrlDelete($label5)
@@ -1855,8 +2573,8 @@ Func StateMachine($msg)
 		Case $msg = $GUI_EVENT_PRIMARYUP
 			;GUIGetState($window,
 			;If $gVerbosity = 1 Then MsgBox(0, "Clicked", "Clucked")
-			$tempPos = WinGetPos("FootnoteReap")
-			$tempSize = WinGetClientSize("FootnoteReap")
+			$tempPos = WinGetPos("[TITLE:FootnoteReap; CLASS:AutoIt v3 GUI]") ;("FootnoteReap")
+			$tempSize = WinGetClientSize("[TITLE:FootnoteReap; CLASS:AutoIt v3 GUI]") ;("FootnoteReap")
 			$tempSize[0] += 12
 			if IsArray($tempPos) AND $tempPos[0] <> $gWinPos[0] AND $tempPos[1] <> $gWinPos[1] Then
 				If WinExists("The FootNote Reaper") Then WinMove("The FootNote Reaper", "", $tempPos[0] + $tempSize[0], $tempPos[1])
@@ -1868,24 +2586,24 @@ Func StateMachine($msg)
 			EndIf
 
 			;XTRAEME: Undo the commented block at some point ...
-			;Case $msg = $GUI_EVENT_MOUSEMOVE
+		Case $msg = $GUI_EVENT_MOUSEMOVE
 			;ConsoleWrite("moved ..")
-			;$tempPos = WinGetPos("FootnoteReap")
-			;$tempSize = WinGetClientSize("FootnoteReap")
-			;$tempSize[0] += 12
-			;if IsArray($tempPos) AND $tempPos[0] <> $gWinPos[0] AND $tempPos[1] <> $gWinPos[1] Then
-			;	If WinExists("The FootNote Reaper") Then WinMove("The FootNote Reaper", "", $tempPos[0] + $tempSize[0], $tempPos[1])
-			;	$gWinPos[0] = $tempPos[0]
-			;	$gWinPos[1] = $tempPos[1]
-			;	$gWinSize[0] = $tempSize[0]
-			;	$gOffset = $tempSize[0]
-			;	$gWinSize[1] = $tempSize[1]
-			;EndIf
+			$tempPos = WinGetPos("[TITLE:FootnoteReap; CLASS:AutoIt v3 GUI]") ;("FootnoteReap")
+			$tempSize = WinGetClientSize("[TITLE:FootnoteReap; CLASS:AutoIt v3 GUI]") ;("FootnoteReap")
+			$tempSize[0] += 12
+			if IsArray($tempPos) AND $tempPos[0] <> $gWinPos[0] AND $tempPos[1] <> $gWinPos[1] Then
+				If WinExists("The FootNote Reaper") Then WinMove("The FootNote Reaper", "", $tempPos[0] + $tempSize[0], $tempPos[1])
+				$gWinPos[0] = $tempPos[0]
+				$gWinPos[1] = $tempPos[1]
+				$gWinSize[0] = $tempSize[0]
+				$gOffset = $tempSize[0]
+				$gWinSize[1] = $tempSize[1]
+			EndIf
 			
-		case $msg = $GUI_EVENT_RESIZED
+		Case $msg = $GUI_EVENT_RESIZED
 			;ConsoleWrite("resized ..")
-			$tempPos = WinGetPos("FootnoteReap")
-			$tempSize = WinGetClientSize("FootnoteReap")
+			$tempPos = WinGetPos("[TITLE:FootnoteReap; CLASS:AutoIt v3 GUI]") ;("FootnoteReap")
+			$tempSize = WinGetClientSize("[TITLE:FootnoteReap; CLASS:AutoIt v3 GUI]") ;("FootnoteReap")
 			if IsArray($tempPos) AND($tempPos[0] <> $gWinPos[0] OR $tempPos[1] <> $gWinPos[1] OR $tempSize[0] <> $gWinSize[0] OR $tempSize[1] <> $gWinSize[1]) Then
 				;ConsoleWrite("resized ..")
 				If WinExists("The FootNote Reaper") Then WinMove("The FootNote Reaper", "", $tempPos[0] + $tempSize[0] + 12, $tempPos[1])
@@ -1899,109 +2617,58 @@ Func StateMachine($msg)
 			;===============  END ABOUT DIALOGUE CASES ==============
 	EndSelect
 	return 0
-EndFunc
+EndFunc   ;==>StateMachine
 
 
 
-Dim $answer = 0
-Global $gNT = 1
-Global $gOffset = 172
-Global $gVerbosity
-Global $gCWD = @WorkingDir
-Global $gKeyName = "HKEY_CURRENT_USER\SOFTWARE\FoonoteReaper"
-Global $gChanges = 0
-Global $gChangesLabel
-Global $gButton
-Global $gWindow
-Global $label5
-Global $label6
-Global $gMakeChangesButton
-Global $param1 ;For functions that are called dynamically
 
-;----Establish all app states here----
-Global $gFirstEntry = true
-Global $gInitialized = false ;Used primarily to handle graphical "init" button. This somewhat mimics $gPositionsValid
-Global $gPositionsValid = false ;Are all Firefox footnote.com buttons configured properly? More specifically is $gDownloadPosition correct?
-Global $gSaveImageDialogUp = false
-Global $gPaused = false
-Global $gRunning = False	;the program doesn't have to be executing the download functions so this is necessary
-;-------------------------------------
+#requireadmin
+Opt("WinTitleMatchMode", 2)
+;Opt("GUIOnEventMode", 1)
 
-Global $gSavetoDirectory = ""
-Global $gSavetoDirectoryRegSz = "gSaveToDirectory"
+$gLoggerEnabled = OnOffOrError($gKeyName, $gLoggerEnabledRegSz)
+if($gLoggerEnabled = "-1") then RegWrite($gKeyName, $gLoggerEnabledRegSz, "REG_DWORD", true)
+if($gLoggerEnabled) then _Console_Alloc()
 
-Global $gInitialURL = "http://www.footnote.com/image/#1|7276022" ;old escaped string "http://www.footnote.com/image/{#}1|7276022"
-Global $gPrevURL = "" ; I can dynamically determine if a person was moving fowards or backwards with this information. If the current url and the backbutton leads to the prev url then that means the person is navigating forwards.
-Global $gPrevURLRegSz = "gPrevURL"
-Global $gCurrentURL = $gInitialURL
-Global $gCurrentURLRegSz = "gCurrentURL"
-Global $gCurrentDocumentStartURL = $gInitialURL
-Global $gCurrentDocumentStartURLRegSz = "gCurrentDocumentStartURL"
+$debug = OnOffOrError($gKeyName, $gDebugRegSz)
+if($debug = "-1") then 
+	RegWrite($gKeyName, $gDebugRegSz, "REG_DWORD", false)
+elseif($debug = 1) Then
+	$gLoggerIgnoreLevel = $ENOTHING
+	Dim $exceptionArray[2] = [$EASSERT, $EINFINITELOOPDBG]
+	SetLoggerIgnoreException($exceptionArray, $EADD)
+endif
 
-;---------footnote button data---------
-Global $gEntireImageButtonKey = "Entire Image"
-Global $gEntireImageButtonRegSz = "gEntireImage"
-Global $gEntireImageButton[2] = [0, 0]
+Local $logIgnoreLevel = OnOffOrError($gKeyName, $gLoggerIgnoreLevelRegSz)
+if($logIgnoreLevel <> "-1") then 
+	$gLoggerIgnoreLevel = $logIgnoreLevel
+else 
+	$gLoggerIgnoreLevel = $EUSERVERBOSE-1 ;$ENOTHING		;TODO; Before release set to $EUSER_VERBOSE
+	RegWrite($gKeyName, $gLoggerIgnoreLevelRegSz, "REG_DWORD", $gLoggerIgnoreLevel)
+endif
+SetLoggerIgnoreLevel($gLoggerIgnoreLevel, true)
 
-Global $gNextButtonKey = "Next Image"
-Global $gNextButtonRegSz = "gNextButton"
-Global $gNextButton[2] = [0, 0]
-
-Global $gPrevButtonKey = "Previous Image"
-Global $gPrevButtonRegSz = "gPrevButton"
-Global $gPrevButton[2] = [0, 0]
-
-Global $gDownloadButtonKey = "Download"
-Global $gDownloadButtonRegSz = "gDownloadButton"
-Global $gDownloadButton[2] = [0, 0]
-
-Dim $gButtonDictionary[4] = [$gDownloadButtonKey, $gNextButtonKey, $gPrevButtonKey, $gEntireImageButtonKey]
-
-Global Enum Step +1 $EBUTTON_KEY = 0, $EOBJECT, $ETIMER, $EREGSZ
-;                    				  Button Name,           Object,        , Timer,    RegSz
-Dim $gFootnoteButtonArray[4][4] = [[$gButtonDictionary[0], $gDownloadButton, 5, $gDownloadButtonRegSz], _
-		[$gButtonDictionary[1], $gNextButton, 5, $gNextButtonRegSz], _
-		[$gButtonDictionary[2], $gPrevButton, 5, $gPrevButtonRegSz], _
-		[$gButtonDictionary[3], $gEntireImageButton, 5, $gEntireImageButtonRegSz]]
-;--------End footnote button data------
-
-
-;--------Browser details--------------
-Global $gProgramName = "Internet Explorer"  	;"Firefox"
-Global $gExeName = "iexplore.exe"			  	;"firefox.exe"
-Global $gTaskIdentifier = "Internet Explorer" 	;"Firefox"
-Global $gRegistryProgramPathSz = "HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\iexplore.exe"	
-								 ;"HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\FIREFOX.EXE\shell\open\command"
-Global $gBrowserWindowId = -1
-
-Global $gProgramPathSz = "gProgramPath"
-Global $gProgramPath = ""
-
-Dim $gWinPos[2] = [0, 0]
-Dim $gWinSize[2] = [0, 0]
-Dim $gGuiItem[4][4]
-
-Dim $gBrowserWinPos[2] = [0, 0]
-Dim $gBrowserWinSize[2] = [0, 0]
-;----End Browser details-------------
+;this has to happen early for all the functions to get the benefit of it.
+Local $sleepMod = OnOffOrError($gKeyName, $gSleepMultiplierRegSz)
+if($sleepMod <> -1) then 
+	$gSleepMultiplier = $sleepMod
+else 
+	RegWrite($gKeyName, $gSleepMultiplierRegSz, "REG_SZ", $gSleepMultiplier)
+endif
 
 ;------------CSV data----------------
 Local $origsecs = _DateDiff('s', "2011/07/01 00:00:00", _NowCalc())
 Logger($EUSER, "Loading footnote website data. This can take a second or two ... ", false)
 $gCSVdata = OnOffOrError($gKeyName, "gCSVdata")
 if($gCSVdata = -1) Then
-	$gCSVdata = ".\bluebook\bluebook-page1docs.psv"
+	$gCSVdata = ".\bluebook\bluebook-data.psv"
+	;$gCSVdata = ".\bluebook\bluebook-page1docs.psv"
 	RegWrite($gKeyName, "gCSVdata", "REG_SZ", $gCSVdata)
 endif
 
-Global $gCSVArray = _CSVFileReadRecords($gCWD & $gCSVdata)
+$gCSVArray = _CSVFileReadRecords($gCWD & $gCSVdata)
 Logger($EUSER, "Load took " & _DateDiff('s', "2011/07/01 00:00:00", _NowCalc()) - $origsecs & " seconds to complete", false)
 ;-----------End CSV data-------------
-
-
-#requireadmin
-Opt("WinTitleMatchMode", 2)
-;Opt("GUIOnEventMode", 1)
 
 If StringRight($gCWD, 1) = "\" OR StringRight($gCWD, 1) = "/" Then
 	$gCWD = StringTrimRight($gCWD, 1)
@@ -2068,7 +2735,7 @@ $aboutitem = GuiCtrlCreateMenuItem("&About", $help)
 
 WindowResizedOrMoved()
 $gFirstEntry = OnOffOrError($gKeyName, "gFirstEntry")
-if($gFirstEntry = -1) then 
+if($gFirstEntry = -1) then
 	$gFirstEntry = true
 EndIf
 
@@ -2091,3 +2758,4 @@ do
 Until $msg = $GUI_EVENT_CLOSE OR $msg = $exititem
 
 CleanupExit($ECLEAN_EXIT, "Shutting down...", false)
+if($gLoggerEnabled) then _Console_Free()
