@@ -56,6 +56,10 @@
 ; 5. The console application breaks the about dialog. Actually the about dialog seems to be broken probably more
 ;    due to moving the code around with all the globals at the top and the functions rejiggered to get rid
 ;    of the warnings. 
+; 6. HUGE bug -- IsEntireImageUp when called when "Select location for download" is up ... ends up clicking
+;    one of the filenames. This causes it to use an old file name. THen it thinks it tries to not overwrite
+;    and since the state is now different it can't even progress. This is a big issue. To repro use Google
+;    Book Downloader. That seems to slow the connection down significantly.
 
 #include <WindowsConstants.au3>
 #include <GuiMenu.au3>
@@ -78,7 +82,7 @@
 #include <ButtonConstants.au3>
 
 ;----------------- Global Definitions -----------------
-Const $version = "0.0.1.2"
+Const $version = "0.0.1.2.1"
 
 Dim $answer = 0
 Global $gNT = 1
@@ -1502,7 +1506,7 @@ Func GetDirectoryNameFromURL($url)
 	
 	if(StringCompare($year, "[illegible]") = 0 or StringCompare($year,"[blank]") = 0) Then $year = "xxxx"
 	if(StringCompare($month, "[illegible]") = 0 or StringCompare($month, "[blank]") = 0 or $month = "0") Then
-		Logger($EUSERVERBOSE, $month, true)
+		Logger($EUSERVERBOSE, $month, true, 60)
 		$month = "xx"
 	else
 		$month = MonthNameToNumber($month, true)
@@ -1585,7 +1589,7 @@ Func StartDownloadImage()
 	Logger($EUSERVERBOSE, "Currently working on URL: " & $gCurrentURL, false)
 	MouseClick("left", $gEntireImageButton[0], $gEntireImageButton[1])
 	Sleep(1000 * $gSleepMultiplier)
-	while (Not WinExists("Select location")) ; or $testOnce = true) 
+	while (Not WinExists("Select location") or Not WinExists("Save As")) ; or $testOnce = true) 
 		;$testOnce = false
 		;To handle the: 
 		;	"Oops, we couldn't load information about this image"
@@ -1827,6 +1831,7 @@ Func StartResume()
 		RegWrite($gKeyName, $gStartResumeTotalPageCountRegSz, "REG_DWORD", $gStartResumeTotalPageCount)
 		RegWrite($gKeyName, $gStartResumeTotalDocCountRegSz, "REG_DWORD", $gStartResumeTotalDocCount)
 		
+		;Add in some stats for files skipped? This could be useful.
 		Logger($EUSER, "Statistics: FootnoteReap handled," & @CRLF & _ 
 						$gStartResumeSessionPageCount & " page(s) across," & @CRLF & _ 
 					    $gStartResumeSessionDocCount & " document(s) since the last pause." & @CRLF & @CRLF & _
@@ -1943,7 +1948,8 @@ Func IsSaveImageDialogUp($automated = false, $count = 0, $timeout = 60)
 					;click and see if we get a dialog. If so it was up. Now lets reenable it.
 					MouseClick("left", $gEntireImageButton[0], $gEntireImageButton[1])
 					Sleep(600 * $gSleepMultiplier)
-					If(WinExists("Select location for download") = true) Then ;by www.fold3.com
+					If(WinExists("Select location for download") = true Or _
+					   WinExists("Save As") = true ) Then ;by www.fold3.com
 						Send("{Tab}{Tab}{Tab}{ENTER}", 0)
 						Sleep(100 * $gSleepMultiplier)
 						$gSaveImageDialogUp = false
