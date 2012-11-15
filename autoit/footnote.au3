@@ -603,7 +603,7 @@ Global $gDownloadButtonKey = "Download"
 Global $gDownloadButtonRegSz = "gDownloadButton"
 Global $gDownloadButton[2] = [0, 0]
 
-Dim $gWinPos[2] = [0,0]
+Dim $gWinPos[2] = [0, 0]
 Dim $gGuiItem[4][4]
 
 
@@ -624,12 +624,12 @@ Dim $gButtonArray[4][4] = [[$gButtonDictionary[0], $gDownloadButton, 5, $gDownlo
 Opt("WinTitleMatchMode", 2)
 ;Opt("GUIOnEventMode", 1)
 
-If StringRight( $gCWD, 1 ) = "\" OR StringRight( $gCWD, 1 ) = "/"  Then
-  $gCWD = StringTrimRight( $gCWD, 1 )
+If StringRight($gCWD, 1) = "\" OR StringRight($gCWD, 1) = "/" Then
+	$gCWD = StringTrimRight($gCWD, 1)
 EndIf
 
 If @OSVersion = "WIN_ME" OR @OSVersion = "WIN_98" OR @OSVersion = "WIN_95" Then
-	$gNT = 0        
+	$gNT = 0
 	$gOffset = 0;180
 EndIf
 
@@ -739,7 +739,7 @@ do
 			;  msgbox(0, $list[$i][1], $list[$i][0])
 			;next
 		Case $msg = $aboutitem
-			If NOT WinExists("The FootNote Reaper") Then
+			If WinExists("The FootNote Reaper") Then ContinueCase
 				If $gNT <> 1 Then
 					$width = 242
 				Else
@@ -779,18 +779,17 @@ do
 				GuiCtrlSetImage($gButton, $gCWD & "\left.bmp")
 				;GUISetState(@SW_SHOW, $gButton)
 				;Msgbox(0,"The Ultimate Collection","Created by Dustin." & @LF & "Contact: dustin@razing-the.net" & @LF & "Website: http://www.razing-the.net")
+			
+
+		Case $msg = $label6
+			If WinExists("The FootNote Reaper") Then
+				If FileExists(@ProgramFilesDir & "\Internet Explorer\iexplore.exe") Then
+					;Run(@ProgramFilesDir & "\Internet Explorer\iexplore.exe http://www.razing.net")
+					_RunDOS("start http://www.razing.net")
+				EndIf
 			EndIf
-					
-                    
-				Case $msg = $label6
-					If  WinExists("The FootNote Reaper") Then
-						If FileExists( @ProgramFilesDir & "\Internet Explorer\iexplore.exe" )  Then 
-				 ;Run(@ProgramFilesDir & "\Internet Explorer\iexplore.exe http://www.razing.net")
-				 _RunDOS("start http://www.razing.net")
-			 EndIf    
-			 EndIf
-			 
-		Case $msg = $label5 
+			
+		Case $msg = $label5
 			;_INetMail ( "dustin@razing-the.net", "[TUC] ", "Please leave the [TUC] in the Subject so my mail filter can sort by it, thanks!")
 
 		Case $msg = $gButton
@@ -798,13 +797,13 @@ do
 				$width = 220
 				$height = 110
 				$pos = WinGetPos("The FootNote Reaper", "")
-				GUICtrlDelete( $gButton )
-				GUICtrlDelete( $label5 )
-				GUICtrlDelete( $label6 )
+				GUICtrlDelete($gButton)
+				GUICtrlDelete($label5)
+				GUICtrlDelete($label6)
 				For $counter = $width to 112 step -1
-					WinMove("The FootNote Reaper",  "", $pos[0] + $gOffset, $pos[1], $counter, $height)
+					WinMove("The FootNote Reaper", "", $pos[0] + $gOffset, $pos[1], $counter, $height)
 				Next
-				GUIDelete( $gWindow )
+				GUIDelete($gWindow)
 			EndIf
 
 		Case $msg = $GUI_EVENT_PRIMARYUP
