@@ -1,14 +1,14 @@
- ;FootNote Reaper
+;FootNote Reaper
 ; AutoIt Version: 3.0
 ; Language:       English
 ; Platform:       Win9x/NT
 ; Description:    A tool to download content off footnote.com
-; Author:         Dustin Darcy (ddarcy@digipen.edu)
+; Author:         Xtraeme (xthaus@yahoo.com)
 ;
 ; Postscript: It may have been better to just use autoitx and a real language like C#. This
 ; way I would have been able to use pointers rather than having to copy data all over the place
 ; and manually synchronizing everything. Once done with this script I'll try to port it to see
-; if it makes things cleaner or if there are any impasses. 
+; if it makes things cleaner or if there are any impasses.
 ;
 ; Todos:
 ; 1. I need to add in an option to allow a resume (from a currently open tab)
@@ -45,26 +45,35 @@
 #Include <Array.au3>
 #Include <Memory.au3>
 #include <nomadmemory.au3>
+#include <misc.au3>
 
 ;for about
 #include <StaticConstants.au3>
 #include <ButtonConstants.au3>
 
-
-Global Const $MF_BYCOMMAND			= 0x00000000
+Global Const $WindowMargin[2] = [16, 36]
+Global Const $MF_BYCOMMAND = 0x00000000
 ;Global Const $MF_OWNERDRAW			= 0x00000100
+
+Func FixClientSize(ByRef $size)
+	if(Not IsArray($size)) then return False
+	$size[0] += $WindowMargin[0]
+	$size[1] += $WindowMargin[1]
+	return true
+EndFunc
+	
 
 ;================= Window Routines ====================
 
 Func ModifyMenu($hMenu, $nID, $nFlags, $nNewID, $ptrItemData)
 	Local $bResult = DllCall('user32.dll', 'int', 'ModifyMenu', _
-												'hwnd', $hMenu, _
-												'int', $nID, _
-												'int', $nFlags, _
-												'int', $nNewID, _
-												'ptr', $ptrItemData)
+			'hwnd', $hMenu, _
+			'int', $nID, _
+			'int', $nFlags, _
+			'int', $nNewID, _
+			'ptr', $ptrItemData)
 	Return $bResult[0]
-EndFunc
+EndFunc   ;==>ModifyMenu
 
 Func SetOwnerDrawn($hMenu, $MenuItemID, $sText)
 	$stItemData = DllStructcreate('int')
@@ -79,8 +88,8 @@ Func SetOwnerDrawn($hMenu, $MenuItemID, $sText)
 			$nFlags, _
 			$MenuItemID, _
 			DllStructGetPtr($stItemData))
-EndFunc
-		
+EndFunc   ;==>SetOwnerDrawn
+
 ;================ End Window Routines =================
 
 
@@ -234,9 +243,48 @@ Func SetArrays()
 	Logger($ETRACE, "SetArrays()", false)
 EndFunc   ;==>SetArrays
 
+Func _RegButtonsSet($start = 0, $loadData = false)
+	Logger($ETRACE, "CountRegButtonsSet(" & $start & ")", false)
+	Local $buttonXY[2] = [0, 0]
+	Local $max = Ubound($gFootnoteButtonArray) - 1
+	If $max < 0 Then CleanupExit(5, "$gFootnoteButtonArray has no objects" & @error, true)
+	for $I = $start to $max
+		$buttonXY[0] = OnOffOrError($gKeyName, $gFootnoteButtonArray[$I][$EREGSZ] & "X")
+		$buttonXY[1] = OnOffOrError($gKeyName, $gFootnoteButtonArray[$I][$EREGSZ] & "Y")
+		
+		if(NOT($buttonXY[0] = -1 or $buttonXY[1] = -1)) Then
+			if($loadData = true) then $gFootnoteButtonArray[$I][$EOBJECT] = $buttonXY
+			$successfulLoads += 1
+		Else
+			Logger($EVERBOSE, "Load failed locate anything for " & $gFootnoteButtonArray[$I][$EREGSZ], false)
+		EndIf
+	next
+	return $successfulLoads
+EndFunc
+
+Func CountRegButtonsSet($start = 0)
+	return _RegButtonsSet($start, false)
+EndFunc
+
+Func LoadRegButtons($start = 0)
+	return _RegButtonsSet($start, true)
+EndFunc
+
+
+Func CountObjButtonsSet()
+	Logger($ETRACE, "CountObjButtonsSet()", false)
+	Local $countCoords = 0
+	For $I = 0 to Ubound($gFootnoteButtonArray) - 1
+		$objcoords = $gFootnoteButtonArray[$I][$EOBJECT]
+		if(Not IsArray($objcoords) or Ubound($objcoords < 2)) Then ContinueLoop
+		if($objcoords[0] <> 0 and $objcoords[1] <> 0) Then $countCoords += 1
+	Next
+	return $countCoords
+EndFunc
+
 
 Func SetCoordinates($buttonName, $timer, $baseKey, $keyname, ByRef $coords)
-	Logger($ETRACE, "SetCoordinates(" & $buttonName & "," & $timer & "," & $baseKey & "," & $keyName & "," & "coords)", false)
+	Logger($ETRACE, "SetCoordinates(" & $buttonName & "," & $timer & "," & $baseKey & "," & $keyname & "," & "coords)", false)
 	MsgBox(48, "Need Coordinates", "Due to differing screen layouts, we need to establish several reference points. Please move the mouse cursor over the '" & $buttonName & "' button. After " & $timer & " seconds the application will ask you to confirm the location.")
 	Do
 		$label = GuiCtrlCreateLabel("Countdown:", 5, 10, 160)
@@ -260,9 +308,25 @@ Func SetCoordinates($buttonName, $timer, $baseKey, $keyname, ByRef $coords)
 		MouseMove(Random(0, @DesktopWidth), Random(0, @DesktopHeight))
 		MouseMove($coords[0], $coords[1])
 	Until(MsgBox(4, "Checking Location...", "Is the mouse pointer over the '" & $buttonName & "' button?") <> 7)
-	WindowResizedOrMoved(true)
+	
+	$ret = WindowResizedOrMoved(true)
 	RegWrite($baseKey, $keyname & "X", "REG_DWORD", $coords[0])
 	RegWrite($baseKey, $keyname & "Y", "REG_DWORD", $coords[1])
+	
+	;The Download button tries to perform some automagic guessing where everything is on the screen.
+	if($buttonName = $gDownloadButtonKey) Then
+		$gPositionsValid = true
+		RegWrite($gKeyName, "gPositionsValid", "REG_DWORD", $gPositionsValid)
+		if($gSaveImageDialogUp = false) Then
+			MouseClick("Left", $coords[0], $coords[1])
+			$gSaveImageDialogUp = True
+		endif
+		
+		Local $countCoords = CountObjButtonsSet()
+		if($ret = true or $countCoords = 0) then
+			CalcAndSetCoordsRelativeToDownload()
+		endif
+	EndIf
 	return true
 EndFunc   ;==>SetCoordinates
 
@@ -272,7 +336,7 @@ Func WindowResizedOrMoved($regwrite = false) ;$x = $, $y, $width, $height)
 	$changed = false
 	$winPos = WinGetPos($gTaskIdentifier)
 	$winSize = WinGetClientSize($gTaskIdentifier)
-	
+	FixClientSize($winSize)
 	;if we don't have a window open we have nothing to work with.
 	if(Not IsArray($winPos) or UBound($winPos) < 2) then return true ;BUG: had it as false before and that causes errors when opening a window setting the values, closing a window, and then trying to do a check/set
 	
@@ -284,19 +348,24 @@ Func WindowResizedOrMoved($regwrite = false) ;$x = $, $y, $width, $height)
 	if(($winSize[0] <> $gBrowserWinSize[0]) or($winSize[1] < $gBrowserWinSize[1] and $winSize[1] <= 400)) Then
 		$changed = True
 	EndIf
+	
 	if($changed = true) Then
 		$gPositionsValid = false
 		$gBrowserWinPos = $winPos
 		$gBrowserWinSize = $winSize
-		if($regwrite = true) then
-			RegWrite($gKeyName, "gWinPosX", "REG_DWORD", $gBrowserWinPos[0])
-			RegWrite($gKeyName, "gWinPosY", "REG_DWORD", $gBrowserWinPos[1])
-			RegWrite($gKeyName, "gWinSizeX", "REG_DWORD", $gBrowserWinSize[0])
-			RegWrite($gKeyName, "gWinSizeY", "REG_DWORD", $gBrowserWinSize[1])
-			RegWrite($gKeyName, "gPositionsValid", "REG_DWORD", $gPositionsValid)
-		endif
-		return true
 	EndIf
+	
+	if(($regwrite = true and $changed = true) OR (OnOffOrError($gKeyName, "gWinPosX") = -1)) Then
+		RegWrite($gKeyName, "gWinPosX", "REG_DWORD", $gBrowserWinPos[0])
+		RegWrite($gKeyName, "gWinPosY", "REG_DWORD", $gBrowserWinPos[1])
+		RegWrite($gKeyName, "gWinSizeX", "REG_DWORD", $gBrowserWinSize[0])
+		RegWrite($gKeyName, "gWinSizeY", "REG_DWORD", $gBrowserWinSize[1])
+		RegWrite($gKeyName, "gPositionsValid", "REG_DWORD", $gPositionsValid)
+	endIf
+	
+	if($changed = true) then 
+		return true
+	Endif
 	return false
 EndFunc   ;==>WindowResizedOrMoved
 
@@ -313,6 +382,7 @@ Func _SetCoords(ByRef $name, $X, $Y, $baseKey, $regSz)
 EndFunc   ;==>_SetCoords
 
 
+;XTRAEME: May want to have an option to choose global over indice or indice over global
 Func CheckParity(ByRef $array, $indice, ByRef $globalvar, $msg, $msgbox)
 	Logger($ETRACE, "CheckParity()", false)
 	;Only works with arrays of [2] and coords
@@ -324,7 +394,8 @@ Func CheckParity(ByRef $array, $indice, ByRef $globalvar, $msg, $msgbox)
 	If Not(UBound($subarray) >= 2 and UBound($globalvar) >= 2) Then return 2
 	
 	If($subarray[0] <> $globalvar[0] Or($subarray[1] <> $globalvar[1])) Then
-		Logger($ETRACE, "gButtonArray and Coords unsynchronized ... (possible error)", true)
+		;TODO: reenable the msgbox at some point to test to make sure we're not missing anything
+		Logger($ETRACE, "gButtonArray and Coords unsynchronized ... (possible error)", false)
 		$array[$indice][1] = $globalvar ;let the global have precedence over the buttonarray ...
 		CheckParity($array, $indice, $globalvar, $msg, $msgbox)
 	EndIf
@@ -336,40 +407,40 @@ EndFunc   ;==>CheckParity
 ;Order = 1 means assign array to globals
 Func SyncArrayAndGlobals($order = 0)
 	Logger($ETRACE, "SyncArrayAndGlobals()", false)
-	$max = Ubound($gButtonArray) - 1
-	If $max < 0 Then CleanupExit(5, "$gButtonArray has no objects" & @error, true)
+	$max = Ubound($gFootnoteButtonArray) - 1
+	If $max < 0 Then CleanupExit(5, "$gFootnoteButtonArray has no objects" & @error, true)
 	
 	for $I = 0 to $max
-		if(StringCompare($gButtonArray[$I][$EBUTTON_KEY], $gDownloadButtonKey) = 0) then
+		if(StringCompare($gFootnoteButtonArray[$I][$EBUTTON_KEY], $gDownloadButtonKey) = 0) then
 			if($order = 0) then
-				$gButtonArray[$I][$EOBJECT] = $gDownloadButton  ;1
+				$gFootnoteButtonArray[$I][$EOBJECT] = $gDownloadButton ;1
 			Else
-				$gDownloadButton = $gButtonArray[$I][$EOBJECT]
+				$gDownloadButton = $gFootnoteButtonArray[$I][$EOBJECT]
 			EndIf
-			CheckParity($gButtonArray, $I, $gDownloadButton, "gDownloadButton and $gButtonArray sync fail...", true)
-		ElseIf(StringCompare($gButtonArray[$I][$EBUTTON_KEY], $gEntireImageButtonKey) = 0) then
+			CheckParity($gFootnoteButtonArray, $I, $gDownloadButton, "gDownloadButton and $gFootnoteButtonArray sync fail...", true)
+		ElseIf(StringCompare($gFootnoteButtonArray[$I][$EBUTTON_KEY], $gEntireImageButtonKey) = 0) then
 			if($order = 0) Then
-				$gButtonArray[$I][$EOBJECT] = $gEntireImageButton
+				$gFootnoteButtonArray[$I][$EOBJECT] = $gEntireImageButton
 			Else
-				$gEntireImageButton = $gButtonArray[$I][$EOBJECT]
+				$gEntireImageButton = $gFootnoteButtonArray[$I][$EOBJECT]
 			EndIf
-			CheckParity($gButtonArray, $I, $gEntireImageButton, "$gEntireImageButton and $gButtonArray sync fail...", true)
-		ElseIf(StringCompare($gButtonArray[$I][$EBUTTON_KEY], $gNextButtonKey) = 0) then
+			CheckParity($gFootnoteButtonArray, $I, $gEntireImageButton, "$gEntireImageButton and $gFootnoteButtonArray sync fail...", true)
+		ElseIf(StringCompare($gFootnoteButtonArray[$I][$EBUTTON_KEY], $gNextButtonKey) = 0) then
 			if($order = 0) Then
-				$gButtonArray[$I][$EOBJECT] = $gNextButton
+				$gFootnoteButtonArray[$I][$EOBJECT] = $gNextButton
 			Else
-				$gNextButton = $gButtonArray[$I][$EOBJECT]
+				$gNextButton = $gFootnoteButtonArray[$I][$EOBJECT]
 			EndIf
-			CheckParity($gButtonArray, $I, $gNextButtonKey, "$gNextButtonKey and $gButtonArray sync fail...", true)
-		ElseIf(StringCompare($gButtonArray[$I][$EBUTTON_KEY], $gPrevButtonKey) = 0) then
+			CheckParity($gFootnoteButtonArray, $I, $gNextButtonKey, "$gNextButtonKey and $gFootnoteButtonArray sync fail...", true)
+		ElseIf(StringCompare($gFootnoteButtonArray[$I][$EBUTTON_KEY], $gPrevButtonKey) = 0) then
 			If($order = 0) Then
-				$gButtonArray[$I][$EOBJECT] = $gPrevButton
+				$gFootnoteButtonArray[$I][$EOBJECT] = $gPrevButton
 			Else
-				$gPrevButton = $gButtonArray[$I][$EOBJECT]
+				$gPrevButton = $gFootnoteButtonArray[$I][$EOBJECT]
 			EndIf
-			CheckParity($gButtonArray, $I, $gPrevButtonKey, "$gPrevButtonKey and $gButtonArray sync fail...", true)
+			CheckParity($gFootnoteButtonArray, $I, $gPrevButtonKey, "$gPrevButtonKey and $gFootnoteButtonArray sync fail...", true)
 		Else
-			Logger($EINTERNAL, $gButtonArray[$I][$EBUTTON_KEY] & " has no handler", true)
+			Logger($EINTERNAL, $gFootnoteButtonArray[$I][$EBUTTON_KEY] & " has no handler", true)
 		EndIf
 	Next
 	;Final step --- do this: CheckParity(ByRef array, ByRef globalvar, $msg, $msgbox)
@@ -377,35 +448,40 @@ EndFunc   ;==>SyncArrayAndGlobals
 
 
 Func CalcAndSetCoordsRelativeToDownload()
+	;This should only be called after a SetDownloadPosition()
 	Logger($ETRACE, "CalcAndSetCoordsRelativeToDownload()", false)
-	If(WindowResizedOrMoved() or $gPositionsValid = false) Then
+	$ret = WindowResizedOrMoved()
+	Logger($EVERBOSE, "WindowResizedOrMoved()=" & $ret & ", $gPositionsValid=" & $gPositionsValid, false)
+	;The function only works if the Download button position is correct.
+	If($ret = true or $gPositionsValid = false) Then
 		return False
 	EndIf
-	$max = Ubound($gButtonArray) - 1
-	If $max < 0 Then CleanupExit(5, "$gButtonArray has no objects" & @error, true)
+	$max = Ubound($gFootnoteButtonArray) - 1
+	If $max < 0 Then CleanupExit(5, "$gFootnoteButtonArray has no objects" & @error, true)
 	
-	CheckParity($gButtonArray, 0, $gDownloadButton, "gButtonArray and Coords unsynchronized ... (possible error)", true)
+	CheckParity($gFootnoteButtonArray, 0, $gDownloadButton, "gButtonArray and Coords unsynchronized ... (possible error)", true)
 	
 	If($gDownloadButton[0] = 0 And $gDownloadButton[1] = 0) Then ;Initial values
 		$gDownloadButton[0] = OnOffOrError($gKeyName, $gDownloadButtonRegSz & "X") ;Check registry
 		$gDownloadButton[1] = OnOffOrError($gKeyName, $gDownloadButtonRegSz & "Y")
 		If($gDownloadButton[0] = -1 Or $gDownloadButton[1] = -1) Then ;If reg not set
 			;"Download", 5, ...
-			SetCoordinates($gDownloadButtonKey, $gButtonArray[0][$ETIMER], $gKeyName, $gDownloadButtonRegSz, $gDownloadButton)
+			SetCoordinates($gDownloadButtonKey, $gFootnoteButtonArray[0][$ETIMER], $gKeyName, $gDownloadButtonRegSz, $gDownloadButton)
 		Endif
 	EndIf
 	$gBrowserWinPos = WinGetPos($gTaskIdentifier)
 	$gBrowserWinSize = WinGetClientSize($gTaskIdentifier)
+	FixClientSize($gBrowserWinSize)
 	
 	for $I = 1 to $max
-		if(StringCompare($gButtonArray[$I][$EBUTTON_KEY], $gEntireImageButtonKey) = 0) then
-			_SetCoords($gEntireImageButton, $gBrowserWinPos[0] + $gBrowserWinSize[0] * .48, $gDownloadButton[1] + 60, $gKeyName, $gEntireImageButtonRegSz)
-		ElseIf(StringCompare($gButtonArray[$I][$EBUTTON_KEY], $gNextButtonKey) = 0) then
-			_SetCoords($gNextButton, $gBrowserWinPos[0] + $gBrowserWinSize[0] - 25, $gDownloadButton[1] - 33, $gKeyName, $gNextButtonRegSz)
-		ElseIf(StringCompare($gButtonArray[$I][$EBUTTON_KEY], $gPrevButtonKey) = 0) then
-			_SetCoords($gPrevButton, $gBrowserWinPos[0] + $gBrowserWinSize[0] - (25 + 15), $gDownloadButton[1] - 33, $gKeyName, $gPrevButtonRegSz)
+		if(StringCompare($gFootnoteButtonArray[$I][$EBUTTON_KEY], $gEntireImageButtonKey) = 0) then
+			_SetCoords($gEntireImageButton, $gBrowserWinPos[0] + $gBrowserWinSize[0] * .47, $gDownloadButton[1] + 60, $gKeyName, $gEntireImageButtonRegSz)
+		ElseIf(StringCompare($gFootnoteButtonArray[$I][$EBUTTON_KEY], $gNextButtonKey) = 0) then
+			_SetCoords($gNextButton, $gBrowserWinPos[0] + $gBrowserWinSize[0] - (25 + $WindowMargin[0]), $gDownloadButton[1] - 33, $gKeyName, $gNextButtonRegSz)
+		ElseIf(StringCompare($gFootnoteButtonArray[$I][$EBUTTON_KEY], $gPrevButtonKey) = 0) then
+			_SetCoords($gPrevButton, $gBrowserWinPos[0] + $gBrowserWinSize[0] - (25 + 15 + $WindowMargin[0]), $gDownloadButton[1] - 33, $gKeyName, $gPrevButtonRegSz)
 		Else
-			Logger($EINTERNAL, $gButtonArray[$I][$EBUTTON_KEY] & " has no handler", true)
+			Logger($EINTERNAL, $gFootnoteButtonArray[$I][$EBUTTON_KEY] & " has no handler", true)
 		EndIf
 	Next
 	SyncArrayAndGlobals()
@@ -415,16 +491,32 @@ EndFunc   ;==>CalcAndSetCoordsRelativeToDownload
 
 Func MakeActive($winState = "")
 	Logger($ETRACE, "MakeActive()", false)
+	
+	;BUG: (RESOLVED) If just a download task list is open it will screw up everything because the exe is resident
+	;     but no windows are available. This causes the script to go into an indefinite MakeActive()
+	;BUG: (RESOLVED) Another issue are processes that don't fully close. These are perceived as valid windows. 
 	If Not ProcessExists($gExeName) Then
 		return 0
 	EndIf
-	
+
 	;WinWaitActive($gTaskIdentifier, "", 5)
 	Local $test
+	Local $count = 0
+	
+	;Get the window active
 	While($gBrowserWindowId = 0 or $gBrowserWindowId = -1)
 		$gBrowserWindowId = WinActivate($gTaskIdentifier)
 		Sleep(500)
+		$count += 1
+		if($count = 20) Then
+			;HACK: (500*20 = 10,000ms = 10secs) This is to handle dangling processes and orphaned windows
+			Logger($EUSER, "There appears to be a Firefox process open, but it's not responding to messages. Please close the process and reload a new instance.", true)
+			return 0
+		EndIf
 	Wend
+	$count = 0
+	
+	;Now we can set the state and wait for the change to take place
 	Do
 		$gBrowserWindowId = WinActivate($gTaskIdentifier)
 		if($gBrowserWindowId = 0) Then
@@ -434,6 +526,12 @@ Func MakeActive($winState = "")
 			WinSetState($gTaskIdentifier, "", $winState)
 		EndIf
 		$test = WinWaitActive($gTaskIdentifier, "", 2)
+		$count += 1
+		if($count = 5) Then
+			;This is to handle dangling processes and orphaned windows
+			Logger($EUSER, "There appears to be a Firefox process open, but it's not responding to messages. Please close the process and reload a new instance.", true)
+			return 0
+		EndIf
 		Sleep(50)
 	Until($test <> 0)
 	WindowResizedOrMoved()
@@ -442,21 +540,11 @@ Func MakeActive($winState = "")
 	return 1
 EndFunc   ;==>MakeActive
 
-Func InitializePage($winState = "")
-	Logger($ETRACE, "InitializePage()", false)
-	if(MakeActive($winState) <> 0 and $gBrowserWinSize[0] > 0 and $gBrowserWinSize[1] > 0) Then
-		WinMove($gTaskIdentifier, "", 0, 0) ; @DesktopWidth, @DesktopHeight)
-		Send("^t^l") ; Open a new tab, and go to the location bar
-		;TODO: This should be based on the current position
-		Send("http://www.footnote.com/image/{#}1|7276022{ENTER}") ; In the URL bar go to some start URL
-		Sleep(5 * 1000) ; Wait 5 seconds for everything to load
-		MouseClick("left", $gBrowserWinPos[0] + ($gBrowserWinSize[0] / 2), $gBrowserWinPos[1] + ($gBrowserWinSize[1] * 0.3), 1)
-	EndIf
-EndFunc   ;==>InitializePage
 
 
 ;grep string for root domain in url bar. If it's footnote.com then everything's fine.
 Func ValidFootnotePage()
+	;TODO: Two fail states (couldn't make active, not correct page) have two return codes or use @error?
 	Logger($ETRACE, "ValidFootnotePage()", false)
 	If(Not MakeActive()) Then
 		return false
@@ -466,24 +554,32 @@ Func ValidFootnotePage()
 	Sleep(100)
 	$clip = ClipGet() ; Grab the clipboard
 	If(StringCompare(StringLower(StringLeft($clip, 30)), "http://www.footnote.com/image/") = 0) Then
+		ClipPut("")
+		$gPrevURL = $gCurrentURL
+		$gCurrentURL = $clip
+		RegWrite($gKeyName, $gPrevURLRegSz, "REG_SZ", $gPrevURL)
+		RegWrite($gKeyName, $gCurrentURLRegSz, "REG_SZ", $gCurrentURL)
+		Logger($EVERBOSE, "$gPrevURL: " & $gPrevURL, false)
+		Logger($EVERBOSE, "$gCurrentURL: " & $gCurrentURL, false)
 		return True
 	EndIf
+	return false
 EndFunc   ;==>ValidFootnotePage
 
 
-Func GetArrayValue($keyName, $index)
-	Logger($ETRACE, "GetArrayValue(" & $keyName & "," & $index & ")", false)
-	$max = Ubound($gButtonArray) - 1
-	If $max < 0 Then CleanupExit(5, "$gButtonArray has no objects" & @error, true)
-		
-	for $I = 1 to $max
-		if(StringCompare($gButtonArray[$I][$EBUTTON_KEY], $keyName) = 0) then
-			;$subVal = $gButtonArray[$I]
-			;This is actually an ___ERROR!!!___ I want $gButtonArray[$I] but it won't let me :(
-			$subMax = Ubound($gButtonArray)-1
+Func GetArrayValue($keyname, $index)
+	Logger($ETRACE, "GetArrayValue(" & $keyname & "," & $index & ")", false)
+	$max = Ubound($gFootnoteButtonArray) - 1
+	If $max < 0 Then CleanupExit(5, "$gFootnoteButtonArray has no objects" & @error, true)
+	
+	for $I = 0 to $max
+		if(StringCompare($gFootnoteButtonArray[$I][$EBUTTON_KEY], $keyname) = 0) then
+			;$subVal = $gFootnoteButtonArray[$I]
+			;This is actually an _ERROR!_ I want $gFootnoteButtonArray[$I] but it won't let me :(
+			$subMax = Ubound($gFootnoteButtonArray) - 1
 			if($index <= $subMax) then
-				return $gButtonArray[$i][$index]
-			else 
+				return $gFootnoteButtonArray[$I][$index]
+			else
 				SetError(2) ; BAD Index
 				return -1
 			EndIf
@@ -491,95 +587,54 @@ Func GetArrayValue($keyName, $index)
 	Next
 	SetError(1) ; No such key
 	return -1
-EndFunc
+EndFunc   ;==>GetArrayValue
 
 Func GUIUpdate()
 	Logger($ETRACE, "GUIUpdate()", false)
-EndFunc
+EndFunc   ;==>GUIUpdate
 
 ;======================= SETTER FUNCTIONS ========================
 ;Everything is based off the Download Button Position so long as this is set everything else is probably good
-Func SetDownloadPosition()
+Func GenericSetButtonPosition(ByRef $buttonKey, ByRef $regSz, ByRef $obj, $winState = "", $skipClosingInitializeCheck = false)
+	Logger($ETRACE, "GenericSetButtonPosition()", false)
+	if($gInitialized = false) then
+		GuiCtrlSetState($initializebutton, $GUI_HIDE)
+	endif
+
+	If Not ValidFootnotePage() Then InitializePage($winState) ;@SW_MAXIMIZE)
+	If(Not WindowResizedOrMoved() and $gPositionsValid = true) Then
+		Return
+	EndIf
+	
+	$timer = GetArrayValue($buttonKey, $ETIMER)
+	SetCoordinates($buttonKey, $timer, $gKeyName, $regSz, $obj)
+	SyncArrayAndGlobals()
+	if($gInitialized = false and $skipClosingInitializeCheck = false) then
+		GuiCtrlSetState($initializebutton, $GUI_SHOW)
+	endif
+EndFunc
+
+Func SetDownloadPosition($winState = "")
 	Logger($ETRACE, "SetDownloadPosition()", false)
-	if($gInitialized = false) then
-		GuiCtrlSetState($initializebutton, $GUI_HIDE)
-	endif
-
-	If Not ValidFootnotePage() Then InitializePage(@SW_MAXIMIZE)
-	If(Not WindowResizedOrMoved() and $gPositionsValid = true) Then
-		Return
-	EndIf
-	;TODO: DUSTIN -- before ship set timer to 10 over array val for first entry?
-	SetCoordinates($gDownloadButtonKey, $gButtonArray[0][$ETIMER], $gKeyName, $gDownloadButtonRegSz, $gDownloadButton)
-	CalcAndSetCoordsRelativeToDownload()
-	;CalcAndSetCoordsRelativeToDownload($gKeyName, $gDownloadButton, $gNextButton, $gEntireImageButton, $gPrevButton)
-	
-	$gPositionsValid = true
-	;DUSTIN; No reason to turn it back on initializing downloadposition initializes everything.
-;~ 	if($gInitialized = false)
-;~ 		GuiCtrlSetState($initializebutton, $GUI_SHOW)
-;~ 	endif
+	GenericSetButtonPosition($gDownloadButtonKey, $gDownloadButtonRegSz, $gDownloadButton, $winState, true)
 EndFunc   ;==>SetDownloadPosition
-
-
-Func SetNextPosition()
+	
+Func SetNextPosition($winState = "")
 	Logger($ETRACE, "SetNextPosition()", false)
-	if($gInitialized = false) then
-		GuiCtrlSetState($initializebutton, $GUI_HIDE)
-	endif
-
-	If Not ValidFootnotePage() Then InitializePage(@SW_MAXIMIZE)
-	If(Not WindowResizedOrMoved() and $gPositionsValid = true) Then
-		Return
-	EndIf
-	
-	$timer = GetArrayValue($gNextButtonKey, 2)
-	SetCoordinates($gNextButtonKey, $timer, $gKeyName, $gNextButtonRegSz, $gNextButton)
-	SyncArrayAndGlobals()
-	if($gInitialized = false) then
-		GuiCtrlSetState($initializebutton, $GUI_SHOW)
-	endif
-	;CalcAndSetCoordsRelativeToDownload()
-EndFunc
+	GenericSetButtonPosition($gNextButtonKey, $gNextButtonRegSz, $gNextButton, $winState)
+EndFunc   ;==>SetNextPosition
 
 
-Func SetPrevPosition()
+Func SetPrevPosition($winState = "")
 	Logger($ETRACE, "SetPrevPosition()", false)
-	if($gInitialized = false) then
-		GuiCtrlSetState($initializebutton, $GUI_HIDE)
-	endif
-	If Not ValidFootnotePage() Then InitializePage(@SW_MAXIMIZE)
-	If(Not WindowResizedOrMoved() and $gPositionsValid = true) Then
-		Return
-	EndIf
-	
-	$timer = GetArrayValue($gPrevButtonKey, 2)
-	SetCoordinates($gPrevButtonKey, $timer, $gKeyName, $gPrevButtonRegSz, $gPrevButton)
-	SyncArrayAndGlobals()
-	if($gInitialized = false) then
-		GuiCtrlSetState($initializebutton, $GUI_SHOW)
-	endif
-EndFunc
+	GenericSetButtonPosition($gPrevButtonKey, $gPrevButtonRegSz, $gPrevButton, $winState)
+EndFunc   ;==>SetPrevPosition
 
 
-Func SetEntireImagePosition()
+Func SetEntireImagePosition($winState = "")
 	Logger($ETRACE, "SetEntireImagePosition", false)
-	if($gInitialized = false) then
-		GuiCtrlSetState($initializebutton, $GUI_HIDE)
-	endif
-
-	If Not ValidFootnotePage() Then InitializePage(@SW_MAXIMIZE)
-	If(Not WindowResizedOrMoved() and $gPositionsValid = true) Then
-		Return
-	EndIf
-	
-	$timer = GetArrayValue($gEntireImageButtonKey, 2)
-	SetCoordinates($gEntireImageButtonKey, $timer, $gKeyName, $gEntireImageButtonRegSz, $gEntireImageButton)
-	SyncArrayAndGlobals()
-	if($gInitialized = false) then
-		GuiCtrlSetState($initializebutton, $GUI_SHOW)
-	endif
-EndFunc
+	GenericSetButtonPosition($gEntireImageButtonKey, $gEntireImageButtonRegSz, $gEntireImageButton, $winState)
+EndFunc   ;==>SetEntireImagePosition
 ;====================== END SETTER FUNCTIONS ======================
 
 ;========================= TOGGLE FUNCS ===========================
@@ -591,34 +646,103 @@ Func TogglePause()
 EndFunc   ;==>TogglePause
 
 
-Func Stop()
-	;IMPL
-	Logger($ETRACE, "Stop()", false)
-	MsgBox(48, "Debug", "Stop ... IMPLEMENT")
-EndFunc   ;==>Stop
+;~ Func Stop()
+;~ 	;IMPL
+;~ 	Logger($ETRACE, "Stop()", false)
+;~ EndFunc   ;==>Stop
 
 
 Func StartResume()
-	;IMPL
+	;TODO: This needs to change to become a resume feature for pause/stop. Init
+	;      will only happen through the button for now on. Actually on second thought
+	;      if the application crashes it needs to be able to relaunch everything to 
+	;      get back to a state where it's running. So I can't block based on $gInitialized = true.
+	;	   Also this needs to be pretty smart. It should check to see if the user has 
+	;      past information in the registry. So this needs to be sort of the master function
+	;      for not only original launch, keeping track of where everything is, and getting
+	;      the user out of a bind if things go south. 
 	Logger($ETRACE, "StartResume()", false)
-	MsgBox(48, "Debug", "Start/Resume ... IMPLEMENT")
+	
+	;Questions: Best time do a loadoldwindow?
+	
+	;Are we initialized? (have a window up)
+	;	if the program claims so do we have a window up?
+	;	is it a valid page? 
+	;	is it the page we remember being on?
+	;If we are do we have any button data? (in the globals, obj arrays)?
+	;Is the button data valid?
+	;	if not do we have anything in the registry?
+	;	is it valid?
+	;	if not lets setdownloadposition()
+	;Do we have all the dialogs up that we need to move forward?
+	;Is our current page we're already handled?
+	
+	;Do we have a window up?
+	if(LoadFirefoxInstance() = true) Then
+		;We didn't, but we should now. Are we initialized? 
+		if($gInitialized = true Or $gPositionsValid = true) Then
+			;the browser must of crashed or been closed. So lets check to make sure now that we 
+			;reloaded our window that everything's correct.
+			InitializePage()
+			if(WindowResizedOrMoved() = true) Then
+				;The new window doesn't match the internal array/globals. Lets try to get 
+				;old registry values.
+				LoadOldWindowState(true)
+			EndIf
+		EndIf
+			;Try to do a load()
+			
+			
+	Else
+		if($gInitialized = true And WindowResizedOrMoved()) Then 
+			If(MsgBox(4, "Confirmation Dialog", "Footnote Reaper appears to be initialized. Clicking 'Yes' will reload everything. Continue?") = 7) Then
+				return
+			EndIf
+			$gInitialized = False
+			$gPositionsValid = false
+		EndIf
+	EndIf
+	if($gInitialized = false) then
+		GuiCtrlSetState($initializebutton, $GUI_HIDE)
+		;Previously just Initialize() which defaults to maximizing the screen (decided I don't like that)
+		$ret = Initialize(false, "", false)
+		If($ret <> false) Then
+			VerifyButtons()  ;_Iif($gSaveImageDialogUp = true And $ret <>2, 0, 1)
+			$gInitialized = true
+		Else
+			;BUG: If a person starts the application, does a normal button initialize. Then later clicks 
+			;     start. The program will reshow the initialize button. I may just need to include lots of
+			;     states. One for the button one for the global init state
+			if($gPositionsValid = false) then
+				GuiCtrlSetState($initializebutton, $GUI_SHOW)
+			endif
+		EndIf
+	EndIf
+	if($gPaused) Then	;or $gStopped?
+		;resume
+	EndIf
+	;Impl main loop this needs to:
+	; 	1. Always make sure we have a Process open (in case FF crashes)
+	; 	2. Make sure we have a page available
+	;	3. Make sure all the buttons are present 
+	;	4. Has to be able to try to find a good position to know how to resume from a last good state
 EndFunc   ;==>StartResume
 ;======================== END TOGGLE FUNCS =========================
 
-Global Enum Step +2 $EVERBOSE=1, $ETRACE, $EASSERT, $EUNHANDLED, $EINTERNAL, $EUSER
+Global Enum Step +2 $EVERBOSE = 1, $ETRACE, $EASSERT, $EUNHANDLED, $EINTERNAL, $EUSER
 Func Logger($code, $msg, $bMsgBox)
-;Overall levels will be:
-; 1. Verbose output
-; 
-; 3. Traces
-;
-; 5. Asserts
-;
-; 7. Unhandled exceptions
-;
-; 9. Internal errors
-;
-; 11. User level messages. 
+	;Overall levels will be:
+	; 1. Verbose output
+	;
+	; 3. Traces
+	;
+	; 5. Asserts
+	;
+	; 7. Unhandled exceptions
+	;
+	; 9. Internal errors
+	;
+	; 11. User level messages.
 	Select
 		Case $code = 1
 			if $bMsgBox then MsgBox(64, "Verbose", $msg);
@@ -631,11 +755,11 @@ Func Logger($code, $msg, $bMsgBox)
 			ConsoleWrite("Assert: " & $msg & @CRLF)
 		Case $code = 7 ;was 1
 			if $bMsgBox then MsgBox(64, "Unhandled Exception", $msg);
-			ConsoleWrite("Unhandled Exception: " & $msg & @CRLF)			
+			ConsoleWrite("Unhandled Exception: " & $msg & @CRLF)
 		Case $code = 9 ;was 5
 			if $bMsgBox then MsgBox(48, "Internal Error", $msg);
 			ConsoleWrite("Internal Error: " & $msg & @CRLF)
-		Case $code = 11 
+		Case $code = 11
 			if $bMsgBox then MsgBox(48, "Notification", $msg);
 			ConsoleWrite("Notification: " & $msg & @CRLF)
 		Case Else
@@ -644,7 +768,7 @@ Func Logger($code, $msg, $bMsgBox)
 	EndSelect
 EndFunc   ;==>Logger
 
-
+Global Enum Step +1 $ECLEAN_EXIT = 0, $EPREMATURE_EXIT, $E2_EXIT, $E3_EXIT, $E4_EXIT, $EINTERNALERR_EXIT
 Func CleanupExit($code, $msg, $bMsgBox)
 	Logger($ETRACE, "CleanupExit()", false)
 	;IMPL -- two params? code, message, msgbox and then write location or other details.
@@ -655,9 +779,12 @@ Func CleanupExit($code, $msg, $bMsgBox)
 	;2-4 ... ?
 	;5 is internal error
 	Select
+		Case $code = 0
+			if $bMsgBox then MsgBox(48, "Clean Exit", $msg);
+			ConsoleWrite("Clean Exit: " & $msg)
 		Case $code = 5
 			if $bMsgBox then MsgBox(48, "Internal Error", $msg);
-			ConsoleWrite("Internal Error: " & $msg)
+			ConsoleWrite("Internal Error Exit: " & $msg)
 	EndSelect
 	Exit($code)
 EndFunc   ;==>CleanupExit
@@ -665,66 +792,108 @@ EndFunc   ;==>CleanupExit
 
 Func VerifyButtons($skip = 1)
 	Logger($ETRACE, "VerifyButtons()", false)
-	CalcAndSetCoordsRelativeToDownload()
-	$max = Ubound($gButtonArray) - 1
-	;For $item in $gButtonArray
-	for $I = 0 to $max
-		If $skip > 0 Then
-			$skip -= 1
-			ContinueLoop
-		EndIf
+	$max = Ubound($gFootnoteButtonArray) - 1
+	;For $item in $gFootnoteButtonArray
+	for $I = $skip to $max
 		;[["Download", $gDownloadButton, 10, $gDownloadButtonRegSz],
-		$buttonName = $gButtonArray[$I][$EBUTTON_KEY]
-		$object = $gButtonArray[$I][$EOBJECT]
-		$timer = $gButtonArray[$I][$ETIMER]
-		$regSz = $gButtonArray[$I][$EREGSZ]
-		;SetCoordinates("Download", 10, $baseKey, $gDownloadButtonRegSz, $downloadcoords)
-		;MsgBox(48, "Debug", IsArray($object) & " " & $object[0])
+		$buttonName = $gFootnoteButtonArray[$I][$EBUTTON_KEY]
+		$object = $gFootnoteButtonArray[$I][$EOBJECT]
+		$timer = $gFootnoteButtonArray[$I][$ETIMER]
+		$regSz = $gFootnoteButtonArray[$I][$EREGSZ]
 		
 		MouseMove($object[0], $object[1])
 		
 		if(MsgBox(4, "Checking Location...", "Is the mouse pointer over the '" & $buttonName & "' button?") = 7) Then
-			SetCoordinates($buttonName, $timer, $gKeyName, $regSz, $gButtonArray[$I][$EOBJECT])
+			SetCoordinates($buttonName, $timer, $gKeyName, $regSz, $gFootnoteButtonArray[$I][$EOBJECT])
 		EndIf
 	Next
 	SyncArrayAndGlobals(1) ; we are storing the values in the array so need to set globals
 EndFunc   ;==>VerifyButtons
 
 
-Func Initialize()
-	Logger($ETRACE, "Initialize()", false)
-	If Not ProcessExists($gExeName) Then
-		;HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\FIREFOX.EXE\shell\open\command
-		$gProgramPath = OnOffOrError("HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\FIREFOX.EXE\shell\open\command", "")
-		If $gProgramPath = -1 Or $gProgramPath = "" Then
-			$gProgramPath = OnOffOrError($gKeyName, $gProgramPathSz)
-		Else
-			$temp = OnOffOrError($gKeyName, $gProgramPathSz)
-			If($temp = -1 Or $temp = "") Then
-				RegWrite($gKeyName, $gProgramPathSz, "REG_SZ", $gProgramPath)
-			EndIf
-		EndIf
-		If $gProgramPath = -1 Or $gProgramPath = "" Then
-			$gProgramPath = FileInstalledWhere("Please specify where you installed " & $gProgramName, "Program (" & $gExeName & ")", $gExeName)
-			$gProgramPath = $gProgramPath & "\" & $gExeName
+Func InitializePage($winState = "")
+;returns 0 if the page fails to init, 1 if we create a new page, 2 if a page is already open.
+	Logger($ETRACE, "InitializePage()", false)
+	If ValidFootnotePage() Then 
+		Local $ret = MsgBox(4, "Checking State...", "Is the 'Save Image' dialog containing the 'Entire Image' and 'Select Portion of Image' visible?")
+		$gSaveImageDialogUp = _Iif($ret == 6, True, False)
+		return 2
+	EndIf
+	if(MakeActive($winState) <> 0 and $gBrowserWinSize[0] > 0 and $gBrowserWinSize[1] > 0) Then		
+		Send("^t^l") ; Open a new tab, and go to the location bar
+		;TODO: This should be based on the current position
+		Send($gCurrentURL & "{ENTER}") ; In the URL bar go to some start URL
+		Sleep(5 * 1000) ; Wait 5 seconds for everything to load
+		MouseClick("left", $gBrowserWinPos[0] + ($gBrowserWinSize[0] / 2), $gBrowserWinPos[1] + ($gBrowserWinSize[1] * 0.3))
+		;send a click to change focus so it doesn't keep the hand icon from grabbing the footnote document causing it to scroll.
+		Send("^")
+		$gSaveImageDialogUp = false
+		return 1
+	EndIf
+	return 0
+EndFunc   ;==>InitializePage
+
+
+Func LoadFirefoxInstance()
+	If ProcessExists($gExeName) Then return False
+	
+	;HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\FIREFOX.EXE\shell\open\command
+	$gProgramPath = OnOffOrError("HKEY_LOCAL_MACHINE\SOFTWARE\Clients\StartMenuInternet\FIREFOX.EXE\shell\open\command", "")
+	If $gProgramPath = -1 Or $gProgramPath = "" Then
+		$gProgramPath = OnOffOrError($gKeyName, $gProgramPathSz)
+	Else
+		$temp = OnOffOrError($gKeyName, $gProgramPathSz)
+		If($temp = -1 Or $temp = "") Then
 			RegWrite($gKeyName, $gProgramPathSz, "REG_SZ", $gProgramPath)
 		EndIf
-		
-		;MsgBox(48, "Debug", FileGetShortName($gProgramPath)) ;& "\" & $gExeName)
-		$ret = Run(FileGetShortName($gProgramPath))
-		;$ret = Run(@ComSpec & " /c " & FileGetShortName($gProgramPath), "", @SW_MINIMIZE); & "\" & $gExeName, "", @SW_MINIMIZE)
-		;If $ret <> 0 Then ;AND NOT @Error
-		;WinActivate($gTaskIdentifier)
-		;WinWaitActive($gTaskIdentifier, 5)
-		If $ret = 0 Then
-			MsgBox(48, "Debug", $ret)
-		EndIf
+	EndIf
+	If $gProgramPath = -1 Or $gProgramPath = "" Then
+		$gProgramPath = FileInstalledWhere("Please specify where you installed " & $gProgramName, "Program (" & $gExeName & ")", $gExeName)
+		$gProgramPath = $gProgramPath & "\" & $gExeName
+		RegWrite($gKeyName, $gProgramPathSz, "REG_SZ", $gProgramPath)
 	EndIf
 	
+	;MsgBox(48, "Debug", FileGetShortName($gProgramPath)) ;& "\" & $gExeName)
+	$ret = Run(FileGetShortName($gProgramPath))
+	;$ret = Run(@ComSpec & " /c " & FileGetShortName($gProgramPath), "", @SW_MINIMIZE); & "\" & $gExeName, "", @SW_MINIMIZE)
+	;If $ret <> 0 Then ;AND NOT @Error
+	;WinActivate($gTaskIdentifier)
+	;WinWaitActive($gTaskIdentifier, 5)
+	If $ret = 0 Then
+		Logger($EINTERNAL, "(ERR# " & $ret & ") Found executable '" & $gProgramPath & "' but failed to run.", true)
+	EndIf
+	return true
+EndFunc
+
+;This makes sure the browser, footnote.com and footnotereaper are all in a useable state
+Func Initialize( _
+	$skipSetDownloadPosition = false, _
+	$winState = @SW_MAXIMIZE, _
+	$winMove = true _
+ )
+;Return 0 = error, 1 success, 2 success (set downloadposition)
+	Logger($ETRACE, "Initialize()", false)
+	
+	LoadFirefoxInstance()
 	;TODO: Ensure the user is actually signed in...
-	InitializePage(@SW_MAXIMIZE)
-	If(MsgBox(1, "Confirm Login", "Before continuing login to footnote.com") <> 2) Then
-		SetDownloadPosition()
+	$ret = InitializePage($winState)
+	If($ret <> false) Then
+		if($winMove = true) then
+			WinMove($gTaskIdentifier, "", 0, 0) ; @DesktopWidth, @DesktopHeight)
+		endif
+		if(Not $skipSetDownloadPosition) then
+			Local $blogin = false
+			if($ret <> 2) then
+				$blogin = MsgBox(1, "Confirm Login", "Before continuing login to footnote.com") <> 2
+			endif
+			;Logger($ETRACE, "$blogin: " & $blogin & "  $ret: "& $ret, false)
+			If($blogin Or $ret = 2) Then
+				SetDownloadPosition($winState)
+				return 2
+			Else
+				return 0
+			EndIf
+		endif
 	Else
 		return 0
 	EndIf
@@ -733,129 +902,180 @@ EndFunc   ;==>Initialize
 
 
 Func MasterInitialize()
+	;TODO: This function needs to be setup as basically a $firstEntry. Meaning I'd like to have the window
+	;      by default in the 0,0 position so I can have the log output on the right. 
 	Logger($ETRACE, "MasterInitialize()", false)
 	GuiCtrlSetState($initializebutton, $GUI_HIDE)
-	If(Initialize()) Then
-		VerifyButtons()
+	;Previously just Initialize() which defaults to maximizing the screen (decided I don't like that)
+	$ret = Initialize(false, "", true)
+	If($ret <> false) Then
+		VerifyButtons()  ;_Iif($gSaveImageDialogUp = true And $ret <>2, 0, 1)
+		$gInitialized = true
 	Else
-		GuiCtrlSetState($initializebutton, $GUI_SHOW)
+		;BUG: If a person starts the application, does a normal button initialize. Then later clicks 
+		;     start. The program will reshow the initialize button. I may just need to include lots of
+		;     states. One for the button one for the global init state
+		if($gPositionsValid = false) then
+			GuiCtrlSetState($initializebutton, $GUI_SHOW)
+		endif
 	EndIf
 EndFunc   ;==>MasterInitialize
 
+	
+
+Func StateMachine()
+EndFunc
 
 
-Func LoadOldWindowState()
+Func HackFixResize()
+	;Hack: Trying to fix issue where flash doesn't refresh properly after resize if there
+	;	   isn't enough of a delay. This provides a delay, but on a small interval
+	Dim $winPos = WinGetPos($gTaskIdentifier)
+	Dim $winSize = WinGetClientSize($gTaskIdentifier)
+	FixClientSize($winSize)
+	WinMove($gTaskIdentifier, "", $winPos[0], $winPos[1], $winSize[0]-5, $winSize[1]-5, 50)
+EndFunc
+
+
+Func TwosComplementToSignedInt(ByRef $coords)
+	Local $modified = False
+	if(Not IsArray($coords)) Then Return false
+	
+	$power = _Iif(StringCompare(@CPUArch, "X86"), 32, 64)
+	Logger($EVERBOSE, "power: " & $power & @CRLF, false)
+	
+	For $I = 0 To UBound($coords)-1
+		if(BitAND($coords[$I], 0xFFFF0000) = true) Then
+			Logger($EVERBOSE, "$coords[" & $I &"]: " & $coords[$I], false)
+			;NOTE: this is platform specific (i.e. 64-bit versus 32-bit vars)
+			$coords[$I] = -(2^$power - $coords[$I]) ;0xFFFFFFFF - $coords[0]
+			Logger($EVERBOSE, "$coords[" & $I &"]: " & $coords[$I], false)
+			$modified = true
+		EndIf
+	Next
+	return $modified
+EndFunc
+
+
+Func LoadOldWindowState($bForceLoad = false)
 	Logger($ETRACE, "LoadOldWindowState()", false)
 	
 	Local $successfulLoads = 0
-	Dim $dlButtonXY[2] = [0,0]
-	Local $buttonXY[2] = [0,0]
+	Dim $dlButtonXY[2] = [0, 0]
+	Local $buttonXY[2] = [0, 0]
 	
-	Local $max = Ubound($gButtonArray) - 1
-	If $max < 0 Then CleanupExit(5, "$gButtonArray has no objects" & @error, true)
+	Local $max = Ubound($gFootnoteButtonArray) - 1
+	If $max < 0 Then CleanupExit(5, "$gFootnoteButtonArray has no objects" & @error, true)
 	
 	;First get our the new window values.
-	if((WindowResizedOrMoved() = false and $gInitialized = true) or $gPositionsValid = true) Then	
-	; WindowResizedOrMoved & $gInitialized
-	; true true -> true: a person may want to fetch data from reg because they already initialized with different window layout and new window layout mimics registry 
-	; true false -> true: If we're not initialized the window resize is pretty irrelevant we want to perform the operation
-	; (false true -> false: (SPECIAL CASE) If we're initialized and nothing's changed with the window this is pretty suspect.  
-	; false false -> true: If we're not initialized irregardless of no window change we want to move ahead.
-		If(MsgBox(4, "Confirmation Dialog", "Footnote Reaper appears to be initialzied. Clicking 'Yes' will load information from the registry which may be out of date. Continue?") = 7) Then
+	if($bForceLoad = false And ((WindowResizedOrMoved() = false and $gInitialized = true) or $gPositionsValid = true)) Then
+		; WindowResizedOrMoved & $gInitialized
+		; true true -> true: a person may want to fetch data from reg because they already initialized with different window layout and new window layout mimics registry
+		; true false -> true: If we're not initialized the window resize is pretty irrelevant we want to perform the operation
+		; (false true -> false: (SPECIAL CASE) If we're initialized and nothing's changed with the window this is pretty suspect.
+		; false false -> true: If we're not initialized irregardless of no window change we want to move ahead.
+		If(MsgBox(4, "Confirmation Dialog", "Footnote Reaper appears to be initialized. Clicking 'Yes' will load information from the registry which may be out of date. Continue?") = 7) Then
 			return false
 		EndIf
 	EndIf
 	
-	Dim $oldBrowserWinpos[2] = [-1,-1]
-	Dim $oldBrowserWinsize[2] = [-1,-1]
+	Dim $oldBrowserWinpos[2] = [-1, -1]
+	Dim $oldBrowserWinsize[2] = [-1, -1]
 	$oldPositionsValid = False
 	
-	$oldPositionsValid = OnOffOrError($gKeyName, $oldPositionsValid)
+	$gInitialized = false ;unless we get to the end the function things have been modified that can ruin proper init.
+	$gPositionsValid = false ;...
+	
+	;This has to be before initialize so we have the write page to load.
+	Local $currentURL = OnOffOrError($gKeyName, $gCurrentURLRegSz)
+	Local $prevURL = OnOffOrError($gKeyName, $gPrevURLRegSz)
+	if($currentURL <> -1) Then $gCurrentURL = $currentURL 
+	if($prevURL <> -1) then $gPrevURL = $prevURL
+	
+	if($gInitialized = false) Then
+		if(Not Initialize(true, "", false)) then
+			return false
+		EndIf
+	EndIf
+	
+	$oldPositionsValid = OnOffOrError($gKeyName, "gPositionsValid")
 	
 	;No reason to continue if we know it's already invalid
-	if($oldPositionsValid = false) Then 
+	if($oldPositionsValid = false) Then
 		;This should only happen when a window is resized and a person does a manual save.
-		;Even in this scenario I should be querying the person to try to prevent this state 
+		;Even in this scenario I should be querying the person to try to prevent this state
 		Logger($EASSERT, "$oldPositionsValid = false", true)
 		return false
 	EndIf
-		
-	$oldBrowserWinPos[0] = OnOffOrError($gKeyName, "gWinPosX")
-	$oldBrowserWinPos[1] = OnOffOrError($gKeyName, "gWinPosX")
+	
+	$oldBrowserWinpos[0] = OnOffOrError($gKeyName, "gWinPosX")
+	$oldBrowserWinpos[1] = OnOffOrError($gKeyName, "gWinPosY")
 	$oldBrowserWinsize[0] = OnOffOrError($gKeyName, "gWinSizeX")
 	$oldBrowserWinsize[1] = OnOffOrError($gKeyName, "gWinSizeY")
 	
 	;When can this type of thing happen? Basically only if a user quits the program
 	;mid-execution. Because all regwrites have a WindowResizedOrMoved() before them
 	;Basically if this is the case we should just bail. The data's likely garbage.
-	If( $oldBrowserWinPos[0] = -1 Or _
-		$oldBrowserWinPos[1] = -1 Or _
-		$oldBrowserWinSize[0] = -1 Or _
-		$oldBrowserWinSize[1] = -1) Then
+	If( $oldBrowserWinpos[0] = -1 Or _
+		$oldBrowserWinpos[1] = -1 Or _
+		$oldBrowserWinsize[0] = -1 Or _
+		$oldBrowserWinsize[1] = -1) Then
 			;$regMissingPosOrSize = True
 			Logger($EUSER, "No previous sessions has been saved.", true)
 			return false
 	EndIf
-			
-	;if($oldBrowserWinPos <> $gBrowserWinPos OR $oldBrowserWinSize <> $gBrowserWinSize)) Then
+
+	TwosComplementToSignedInt($oldBrowserWinpos)
 	
 	;Do we need to reposition the window to get all the old data to work?
-	if((($oldBrowserWinPos[0] <> $gBrowserWinPos[0]) or ($oldBrowserWinPos[1] <> $gBrowserWinPos[1])) Or  _
-	   (($oldBrowserWinSize[0] <> $gBrowserWinSize[0]) or ($gBrowserWinSize[1] < $oldBrowserWinSize[1] and $gBrowserWinSize[1] <= 400))) Then
-		If(MsgBox(4, "Confirmation Dialog", "The window has been moved or resized. Reset window? Answering 'No' will cancel the load.") = 7) Then 
+	if((($oldBrowserWinpos[0] <> $gBrowserWinPos[0]) or($oldBrowserWinpos[1] <> $gBrowserWinPos[1])) Or _
+			(($oldBrowserWinsize[0] <> $gBrowserWinSize[0]) or($gBrowserWinSize[1] < $oldBrowserWinsize[1] and $gBrowserWinSize[1] <= 400))) Then
+		Logger($EVERBOSE, $oldBrowserWinpos[0] & " " & $gBrowserWinPos[0] & ", " & $oldBrowserWinpos[1] & " " & $gBrowserWinPos[1] & ", " & $oldBrowserWinsize[0] & " " & $gBrowserWinSize[0] & ", " & $oldBrowserWinsize[1] & " " & $gBrowserWinSize[1], false)
+		If(MsgBox(4, "Confirmation Dialog", "The window has been moved or resized. Reset window? Answering 'No' will cancel the load.") = 7) Then
 			return False
 		Else
-			if(WinMove($gTaskIdentifier, "", $oldBrowserWinPos[0], $oldBrowserWinPos[1], $oldBrowserWinSize[0], $oldBrowserWinSize[1]) = 0) Then
+			HackFixResize()
+			if(WinMove($gTaskIdentifier, "", $oldBrowserWinpos[0], $oldBrowserWinpos[1], $oldBrowserWinsize[0], $oldBrowserWinsize[1]) = 0) Then
 				Logger($EINTERNAL, "Failed to move and resize window. Aborting. Try loading again or reinitialize the program.", true)
 				return false
 			EndIf
-			$gBrowserWinPos = $oldBrowserWinPos
-			$gBrowserWinSize = $oldBrowserWinSize
+			
+			$gBrowserWinPos = $oldBrowserWinpos
+			$gBrowserWinSize = $oldBrowserWinsize
 		EndIf
 	EndIf
 	
-	$gInitialized = false	 ;unless we get to the end the function things have been modified that can ruin proper init.
-	$gPositionsvalid = false ;...
+
 	
-	;TODO: Dustin set this to the array instead.
-	if(IsArray($gButtonArray[0][$EOBJECT])) Then
+	if(IsArray($gFootnoteButtonArray[0][$EOBJECT])) Then
 		$dlButtonXY[0] = OnOffOrError($gKeyName, $gDownloadButtonRegSz & "X") ;Check registry
 		$dlButtonXY[1] = OnOffOrError($gKeyName, $gDownloadButtonRegSz & "Y")
-		$gButtonArray[0][$EOBJECT] = $dlButtonXY
+		$gFootnoteButtonArray[0][$EOBJECT] = $dlButtonXY
 	Else
 		Logger($EINTERNAL, "Failed to grab $gDownloadButton object from internal array", true)
 		return False
 	EndIf
 
-	;If $gDownloadButton returns -1 that probably means nothing's valid. Should we force user 
-	;to init? No. Instead I'll load what I can and just inform the user at the end that the 
+	;If $gDownloadButton returns -1 that probably means nothing's valid. Should we force user
+	;to init? No. Instead I'll load what I can and just inform the user at the end that the
 	;load was only partly successful. We'll base this off $gPositionsvalid
 	If($dlButtonXY[0] = -1 Or $dlButtonXY[1] = -1) Then
-		$gButtonArray[0][$EOBJECT] = $buttonXY 	;set it to the original defaults.
+		$gFootnoteButtonArray[0][$EOBJECT] = $buttonXY ;set it to the original defaults.
 	Else
 		$successfulLoads += 1
-		$gPositionsvalid = true
+		$gPositionsValid = true
 	Endif
 
-	for $I = 1 to $max
-		$buttonXY[0] = OnOffOrError($gKeyName, $gButtonArray[$I][$EREGSZ] & "X")
-		$buttonXY[1] = OnOffOrError($gKeyName, $gButtonArray[$I][$EREGSZ] & "Y")
-		
-		if(NOT($buttonXY[0] = -1 or $buttonXY[1] = -1)) Then
-			$gButtonArray[$I][$EOBJECT] = $buttonXY
-			$successfulLoads += 1
-		Else
-			Logger($EVERBOSE, "Load failed locate anything for " & $gButtonArray[$I][$EREGSZ], false)
-		EndIf
-	next
+	$successfulLoads = LoadRegButtons()
 
 	SyncArrayAndGlobals(1) ;arrays -> globals
-	;CheckParity($gButtonArray, 0, $gDownloadButton, "gButtonArray and Coords unsynchronized ... (possible error)", true)
-	if($gPositionsvalid = true And ($successfulLoads-1) = $max) Then
+	;CheckParity($gFootnoteButtonArray, 0, $gDownloadButton, "gButtonArray and Coords unsynchronized ... (possible error)", true)
+	if($gPositionsValid = true And($successfulLoads - 1) = $max) Then
 		$gInitialized = True
+		Logger($EUSER, "Load successful", true)
 	Else
 		Logger($EUSER, "Not all data was loaded successfully. Please click 'Edit -> Verify Buttons'", true)
-		ConsoleWrite($max & " " & $successfulLoads & " " & $gPositionsvalid)
+		Logger($EVERBOSE, $max & " " & $successfulLoads & " " & $gPositionsValid, false)
 	EndIf
 	
 	if($gInitialized = false) then
@@ -863,13 +1083,14 @@ Func LoadOldWindowState()
 	else
 		GuiCtrlSetState($initializebutton, $GUI_HIDE)
 	endif
-EndFunc   ;==>LoadOldWindowState
+	return $gInitialized
+EndFunc   ;==>WindowState
 
 
 Func SaveWindowState()
 	Logger($ETRACE, "SaveWindowState()", false)
 	;impl
-EndFunc
+EndFunc   ;==>SaveWindowState
 
 
 Func StoreByRef(ByRef $src, ByRef $dest)
@@ -898,18 +1119,19 @@ Global $param1 ;For functions that are called dynamically
 
 ;----Establish all app states here----
 Global $firstEntry = 0
-Global $gInitialized = false
-Global $gPositionsValid = false
+Global $gInitialized = false		;Used primarily to handle graphical "init" button. This somewhat mimics $gPositionsValid
+Global $gPositionsValid = false		;Are all Firefox footnote.com buttons configured properly? More specifically is $gDownloadPosition correct? 
+Global $gSaveImageDialogUp = false
+Global $gPaused = false
 ;-------------------------------------
 
-Global $gProgramName = "Firefox"
-Global $gExeName = "firefox.exe"
-Global $gTaskIdentifier = "Firefox"
-Global $gBrowserWindowId = -1
+Global $gInitialURL = "http://www.footnote.com/image/{#}1|7276022"
+Global $gPrevURL = ""
+Global $gPrevURLRegSz = "gPrevURL"
+Global $gCurrentURL = $gInitialURL
+Global $gCurrentURLRegSz = "gCurrentURL"
 
-Global $gProgramPathSz = "gProgramPath"
-Global $gProgramPath = ""
-
+;---------footnote button data---------
 Global $gEntireImageButtonKey = "Entire Image"
 Global $gEntireImageButtonRegSz = "gEntireImage"
 Global $gEntireImageButton[2] = [0, 0]
@@ -926,24 +1148,33 @@ Global $gDownloadButtonKey = "Download"
 Global $gDownloadButtonRegSz = "gDownloadButton"
 Global $gDownloadButton[2] = [0, 0]
 
-Dim $gWinPos[2] = [0, 0]
-Dim $gWinSize[2] = [0, 0]
-Dim $gGuiItem[4][4]
-
-
-;Firefox window details
-Dim $gBrowserWinPos[2] = [0, 0]
-Dim $gBrowserWinSize[2] = [0, 0]
-
 Dim $gButtonDictionary[4] = [$gDownloadButtonKey, $gNextButtonKey, $gPrevButtonKey, $gEntireImageButtonKey]
 
-Global Enum Step +1 $EBUTTON_KEY=0, $EOBJECT, $ETIMER, $EREGSZ
-;                    Button Name,           Object,        , Timer,    RegSz
-Dim $gButtonArray[4][4] = [[$gButtonDictionary[0], $gDownloadButton, 5, $gDownloadButtonRegSz], _
+Global Enum Step +1 $EBUTTON_KEY = 0, $EOBJECT, $ETIMER, $EREGSZ
+;                    				  Button Name,           Object,        , Timer,    RegSz
+Dim $gFootnoteButtonArray[4][4] = [[$gButtonDictionary[0], $gDownloadButton, 5, $gDownloadButtonRegSz], _
 		[$gButtonDictionary[1], $gNextButton, 5, $gNextButtonRegSz], _
 		[$gButtonDictionary[2], $gPrevButton, 5, $gPrevButtonRegSz], _
 		[$gButtonDictionary[3], $gEntireImageButton, 5, $gEntireImageButtonRegSz]]
-;;==>Firefox window details
+;--------End footnote button data------
+
+
+;--------Firefox details--------------
+Global $gProgramName = "Firefox"
+Global $gExeName = "firefox.exe"
+Global $gTaskIdentifier = "Firefox"
+Global $gBrowserWindowId = -1
+
+Global $gProgramPathSz = "gProgramPath"
+Global $gProgramPath = ""
+
+Dim $gWinPos[2]  = [0, 0]
+Dim $gWinSize[2] = [0, 0]
+Dim $gGuiItem[4][4]
+
+Dim $gBrowserWinPos[2] = [0, 0]
+Dim $gBrowserWinSize[2] = [0, 0]
+;----End Firefox details-------------
 
 
 #requireadmin
@@ -965,8 +1196,9 @@ Else
 	GuiCreate("FootnoteReap", 180, 140) ;height 200
 EndIf
 
+HotKeySet("{F10}", "StartResume")
 HotKeySet("{F11}", "TogglePause")
-HotKeySet("{ESC}", "Stop")
+;~ HotKeySet("{ESC}", "Stop")
 
 ;GuiSetIcon($gCWD & "\a8950027.ico", 0)
 GUISetBkColor(0xffffff)
@@ -981,7 +1213,7 @@ SetOwnerDrawn($commands, $dashitem, "")
 
 $startitem = GuiCtrlCreateMenuItem("&Start", $commands)
 $pauseitem = GuiCtrlCreateMenuItem("&Pause", $commands)
-$stopitem = GuiCtrlCreateMenuItem("S&top", $commands)
+;$stopitem = GuiCtrlCreateMenuItem("S&top", $commands)
 $exititem = GuiCtrlCreateMenuItem("&Exit", $commands)
 
 $edit = GuiCtrlCreateMenu("&Edit")
@@ -1006,6 +1238,7 @@ $checkprevitem = GuiCtrlCreateMenuItem("&Prev coords", $checkitem)
 $checkentireimageitem = GuiCtrlCreateMenuItem("'&Entire Image' coords", $checkitem)
 
 $verifybuttons = GuiCtrlCreateMenuItem("&Verify Buttons", $edit)
+;$winmove = GuiCtrlCreateMenuItem("&Winmove test", $edit)
 
 $help = GuiCtrlCreateMenu("&Help")
 $readmeitem = GuiCtrlCreateMenuItem("View &Readme", $help)
@@ -1013,6 +1246,8 @@ $aboutitem = GuiCtrlCreateMenuItem("&About", $help)
 
 WindowResizedOrMoved()
 $initializebutton = GUICtrlCreateButton("Initialize", 20, 20, 120)
+$startresumebutton = GUICtrlCreateButton("Start/Resume", 20, 20, 120)
+GuiCtrlSetState($startresumebutton, $GUI_HIDE)
 ;WinSetOnTop(GUICreate("Status Window",500,30,500,1), '', 1)
 
 ConsoleWrite("Initialized GUI and global ..." & @CRLF)
@@ -1025,11 +1260,24 @@ do
 		Case $msg = $GUI_EVENT_CLOSE Or $msg = $exititem
 			ExitLoop
 
+		;Case $msg = $winmove
+		;	Local $poss = WinGetPos($gTaskIdentifier)
+		;	Local $tempSizee = WinGetClientSize($gTaskIdentifier)
+		;	FixClientSize($tempSizee)
+		;	WinMove($gTaskIdentifier, "", $poss[0]-30, $poss[1], $tempSizee[0], $tempSizee[1]) 
+		;	ConsoleWrite($tempSizee[0] & "   " & $tempSizee[1] & @CRLF)
+			
+
+		;TODO: I need to make this smarter. On closing down and restarting the app it should check
+		;      the registry to see if there's anything there. If there is it's better to say:
+		;      "Load Old State"
+		;      The commands menu should have: 
+		;			1. Initialize (perhaps edit the label to 'reinitialize' once $gInitialize is set?)
 		Case $msg = $initializebutton
 			MasterInitialize()
 			
 		Case $msg = $startitem
-			MasterInitialize()
+			StartResume()
 			;GUICtrlDelete($initializebutton)
 
 			;Impl get Download location part...
@@ -1037,22 +1285,21 @@ do
 			;for $i = 1 to $list[0][0]
 			;  msgbox(0, $list[$i][1], $list[$i][0])
 			;next
-		
+			
 		Case $msg = $loaditem
 			LoadOldWindowState()
 			
 		Case $msg = $saveitem
 			SaveWindowState()
 			
-
 		Case $msg = $registrationitem
 			If $gNT = 1 Then RegWrite("HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Applets\Regedit\Favorites", "FoonoteReaper", "REG_SZ", "Computer\HKEY_CURRENT_USER\SOFTWARE\FoonoteReaper")
 			Run("regedit.exe")
 			WinWaitActive("Registry Editor")
 			If $gNT = 1 Then Send("!af{ENTER}{F5}")
 			RegDelete("HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Applets\Regedit\Favorites", "FoonoteReaper")
-		
-		;==================== Set Button ==========================
+			
+			;==================== Set Button ==========================
 		Case $msg = $downloaditem
 			If Not MakeActive() Then ContinueLoop
 			$gPositionsValid = false
@@ -1073,33 +1320,29 @@ do
 			If Not MakeActive() Then ContinueLoop
 			$gPositionsValid = false
 			SetEntireImagePosition()
-		;================= End Set Buttons ========================
+			;================= End Set Buttons ========================
 			
-		;====================== Check Buttons =====================
+			;====================== Check Buttons =====================
 		Case $msg = $checkdownloaditem
-			CalcAndSetCoordsRelativeToDownload()
 			;Perhaps record a state to remember whether a person manually set a position versus one autoconfigured?
 			MouseMove($gDownloadButton[0], $gDownloadButton[1])
 			
 		Case $msg = $checknextitem
-			CalcAndSetCoordsRelativeToDownload()
 			MouseMove($gNextButton[0], $gNextButton[1])
 			
 		Case $msg = $checkprevitem
-			CalcAndSetCoordsRelativeToDownload()
 			MouseMove($gPrevButton[0], $gPrevButton[1])
 			
 		Case $msg = $checkentireimageitem
-			CalcAndSetCoordsRelativeToDownload()
 			MouseMove($gEntireImageButton[0], $gEntireImageButton[1])
 			
 		Case $msg = $verifybuttons
 			If Not MakeActive() Then ContinueLoop
 			VerifyButtons(0)
-		;=================== End Check Buttons ======================
+			;=================== End Check Buttons ======================
 			
 			
-		;================  ABOUT DIALOGUE CASES =================
+			;================  ABOUT DIALOGUE CASES =================
 		Case $msg = $aboutitem
 			If WinExists("The FootNote Reaper") Then ContinueLoop
 			If $gNT <> 1 Then
@@ -1117,7 +1360,7 @@ do
 			GUICtrlSetColor($label1, 0xff0000)
 			$spacer = 20
 			$lab2h = 36
-			$label2 = GuiCtrlCreateLabel("Created By:  Dustin", 5, $lab2h)
+			$label2 = GuiCtrlCreateLabel("Created By:  Xtraeme", 5, $lab2h)
 			$lab3h = $lab2h + $spacer
 			$label3 = GuiCtrlCreateLabel("Contact:", 5, $lab3h)
 			$lab4h = $lab3h + $spacer
@@ -1131,7 +1374,7 @@ do
 				WinMove("The FootNote Reaper", "", $pos[0] + $tempSize[0], $pos[1], 112 + $counter, $height)
 			Next
 
-			Global $label5 = GuiCtrlCreateLabel("dustin@razing-the.net", 70, $lab3h - 2, $SS_NOTIFY)
+			Global $label5 = GuiCtrlCreateLabel("xthaus@yahoo.com", 70, $lab3h - 2, $SS_NOTIFY)
 			GUICTRLSetFont($label5, 9, 400, 4)
 			GUICtrlSetColor($label5, 0x0000ff)
 			Global $label6 = GuiCtrlCreateLabel("http://wiki.razing.net", 70, $lab4h - 2, $SS_NOTIFY)
@@ -1141,19 +1384,19 @@ do
 			$gButton = GUICtrlCreateButton("i", $width - 15, 5, 12, 12, BitOr($BS_BITMAP, $BS_DEFPUSHBUTTON))
 			GuiCtrlSetImage($gButton, $gCWD & "\left.bmp")
 			;GUISetState(@SW_SHOW, $gButton)
-			;Msgbox(0,"The Ultimate Collection","Created by Dustin." & @LF & "Contact: dustin@razing-the.net" & @LF & "Website: http://www.razing-the.net")
+			;Msgbox(0,"The Ultimate Collection","Created by Xtraeme." & @LF & "Contact: xthaus@yahoo.com" & @LF & "Website: http://wiki.razing.net")
 			
 
 		Case $msg = $label6
 			If WinExists("The FootNote Reaper") Then
 				If FileExists(@ProgramFilesDir & "\Internet Explorer\iexplore.exe") Then
-					;Run(@ProgramFilesDir & "\Internet Explorer\iexplore.exe http://www.razing.net")
+					;Run(@ProgramFilesDir & "\Internet Explorer\iexplore.exe http://wiki.razing.net")
 					_RunDOS("start http://wiki.razing.net")
 				EndIf
 			EndIf
 			
 		Case $msg = $label5
-			_INetMail ( "dustin@razing-the.net", "[FootnoteReaper] ", "Please leave the [FootnoteReaper] in the Subject so my mail filter can sort by it, thanks!")
+			_INetMail("xthaus@yahoo.com", "[FootnoteReaper] ", "Please leave the [FootnoteReaper] in the Subject so my mail filter can sort by it, thanks!")
 
 		Case $msg = $gButton
 			If WinExists("The FootNote Reaper") Then
@@ -1186,35 +1429,38 @@ do
 				$gWinSize[1] = $tempSize[1]
 			EndIf
 
-		Case $msg = $GUI_EVENT_MOUSEMOVE
+		;XTRAEME: Undo the commented block at some point ...
+		;Case $msg = $GUI_EVENT_MOUSEMOVE
 			;ConsoleWrite("moved ..")
-			$tempPos = WinGetPos("FootnoteReap")
-			$tempSize = WinGetClientSize("FootnoteReap")
-			$tempSize[0] += 12
-			if IsArray($tempPos) AND $tempPos[0] <> $gWinPos[0] AND $tempPos[1] <> $gWinPos[1] Then
-				If WinExists("The FootNote Reaper") Then WinMove("The FootNote Reaper", "", $tempPos[0] + $tempSize[0], $tempPos[1])
-				$gWinPos[0] = $tempPos[0]
-				$gWinPos[1] = $tempPos[1]
-				$gWinSize[0] = $tempSize[0]
-				$gOffset = $tempSize[0]
-				$gWinSize[1] = $tempSize[1]
-			EndIf
+			;$tempPos = WinGetPos("FootnoteReap")
+			;$tempSize = WinGetClientSize("FootnoteReap")
+			;$tempSize[0] += 12
+			;if IsArray($tempPos) AND $tempPos[0] <> $gWinPos[0] AND $tempPos[1] <> $gWinPos[1] Then
+			;	If WinExists("The FootNote Reaper") Then WinMove("The FootNote Reaper", "", $tempPos[0] + $tempSize[0], $tempPos[1])
+			;	$gWinPos[0] = $tempPos[0]
+			;	$gWinPos[1] = $tempPos[1]
+			;	$gWinSize[0] = $tempSize[0]
+			;	$gOffset = $tempSize[0]
+			;	$gWinSize[1] = $tempSize[1]
+			;EndIf
 			
 		case $msg = $GUI_EVENT_RESIZED
 			;ConsoleWrite("resized ..")
 			$tempPos = WinGetPos("FootnoteReap")
 			$tempSize = WinGetClientSize("FootnoteReap")
-			if IsArray($tempPos) AND ($tempPos[0] <> $gWinPos[0] OR $tempPos[1] <> $gWinPos[1] OR $tempSize[0] <> $gWinSize[0] OR $tempSize[1] <> $gWinSize[1]) Then
-					;ConsoleWrite("resized ..")
-					If WinExists("The FootNote Reaper") Then WinMove("The FootNote Reaper", "", $tempPos[0] + $tempSize[0] + 12, $tempPos[1])
-					$gWinPos[0] = $tempPos[0]
-					$gWinPos[1] = $tempPos[1]
-					$gWinSize[0] = $tempSize[0]+12
-					$gOffset = $tempSize[0]
-					$gWinSize[1] = $tempSize[1]
+			if IsArray($tempPos) AND($tempPos[0] <> $gWinPos[0] OR $tempPos[1] <> $gWinPos[1] OR $tempSize[0] <> $gWinSize[0] OR $tempSize[1] <> $gWinSize[1]) Then
+				;ConsoleWrite("resized ..")
+				If WinExists("The FootNote Reaper") Then WinMove("The FootNote Reaper", "", $tempPos[0] + $tempSize[0] + 12, $tempPos[1])
+				$gWinPos[0] = $tempPos[0]
+				$gWinPos[1] = $tempPos[1]
+				$gWinSize[0] = $tempSize[0] + 12
+				$gOffset = $tempSize[0]
+				$gWinSize[1] = $tempSize[1]
 			EndIf
 
-		;===============  END ABOUT DIALOGUE CASES ==============
+			;===============  END ABOUT DIALOGUE CASES ==============
 	EndSelect
 
 Until $msg = $GUI_EVENT_CLOSE OR $msg = $exititem
+
+CleanupExit($ECLEAN_EXIT, "Shutting down...", false)
