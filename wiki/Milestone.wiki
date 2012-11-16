@@ -1,7 +1,7 @@
 #labels Phase-Design,Phase-Requirements,Featured
 == Milestone Goals ==
 
-The major tasks and [Todo]s I want to complete for the next milestone (v0.1.0) are:
+The major tasks and [Todo todo]s I want to complete for the next milestone (v0.1.0) are:
 
 *16.* Add a routine to navigate through the local footnote.com folder to double check the IDs to see if additional naming information can be found to validate the current folders (create a new Commands→Tools category). (external tool)
 
