@@ -1,0 +1,37 @@
+#labels Featured
+== Change Log ==
+Head = [http://wiki.razing.net/footnotereap/FootnoteReap_v0.0.1.2.3.zip v0.0.1.2.3] (2012-02-18, Hotfix)
+  * Fixed: Line 11298 (File "C:\Users\Extreme\Desktop\Footnote\footnote.exe"): Error: Variable used without being declared''
+  * Modified launch scripts
+
+
+[http://wiki.razing.net/footnotereap/FootnoteReap_v0.0.1.2.2.zip v0.0.1.2.2] (2012-02-17, Hotfix)
+  * Recompiled the executable as a console application and disabled embedded kernel32.dll calls. The logger is now always enabled. All output should be capturable through STDOUT. The gLoggerEnabled REG_DWORD is now deprecated.
+  * Fixed dynamic directory creation. FootnoteReap should now correctly detect "page 1" and "page 1.jpg" in the "Save As" dialog.
+  * Added a new emergency exit hotkey (ALT+CTRL+SHIFT+E) and resolved a logic bug that should have prevented the application from ever working.
+
+
+[http://wiki.razing.net/footnotereap/FootnoteReap_v0.0.1.2.1.zip v0.0.1.2.1] (2011-10-03, Hotfix)
+  * Now detects "Save As" and "Select location for download ..." after clicking "Entire Image"
+
+
+[http://wiki.razing.net/footnotereap/footnote_v0.0.1.2.exe v0.0.1.2] (2011-08-21) <!-- <toggledisplay status="show"> /-->
+  * GUI fixes (the start/resume and initialize button toggles correctly now; and the 'about' dialog anchors properly to the main window in all cases)
+  * improved logging tool / better debug features (to help detect and prevent infinite loops -- see "[[FootnoteReap#Tips|tips]]")
+  * fixed several race conditions where the application would get stuck:
+  ** trying to rediscover the "Entire Image" button,
+  ** when resolving "Confirm Save As" during a collision, and 
+  ** an instance where the download would wait indefinitely for the data pump to start when the pipe was inactive <!-- </toggledisplay> /-->
+
+
+[http://wiki.razing.net/footnotereap/footnote_v0.0.1.1.exe v0.0.1.1] (2011-08-20)<!--  <toggledisplay status="hide"> /-->
+  *bug fixes (better directory handling and more)
+  *using "ALT+D" now instead of "CTRL+L" for greater compatibility <!-- </toggledisplay> /-->
+
+
+[http://wiki.razing.net/footnotereap/FootnoteReap_v0.0.1.0.zip v0.0.1.0] (2011-08-19) <!-- <toggledisplay status="show"> /-->
+  *Basic feature set functional (downloading, resuming, recovery cases, automated directory creation, etc)
+  *Global hotkeys (F10 - start, F11 - pause)
+  *Logging feature set
+  *Simple statistics (page and doc counts)
+  *Identifies new documents not previously stored in CSV.
