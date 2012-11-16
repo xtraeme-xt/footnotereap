@@ -1,5 +1,11 @@
 #labels Featured,Phase-Support
 == Change Log ==
+
+<font size="1">ver. *a*.*b*.*c*.*d*.*e*
+
+*a* = major version<br>*b* = milestone goals reached<br>*c* = todo enhancements and feature additions<br>*d* = bugs and more involved fixes<br>*e* = hotfix (minor changes and platform specific issues)</font>
+
+
 Head = [http://wiki.razing.net/footnotereap/FootnoteReap_v0.0.1.2.3.zip v0.0.1.2.3] (2012-02-18, Hotfix)
   * Fixed: Line 11298 (File "C:\Users\Extreme\Desktop\Footnote\footnote.exe"): Error: Variable used without being declared''
   * Modified launch scripts
