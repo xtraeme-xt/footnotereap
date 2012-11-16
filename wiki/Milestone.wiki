@@ -1,0 +1,10 @@
+#labels Phase-Design,Phase-Requirements,Featured
+== Milestone Goals ==
+
+The major tasks and [todo]s I want to complete for the next milestone (v0.1.0) are:
+
+*16.* Add a routine to navigate through the local footnote.com folder to double check the IDs to see if additional naming information can be found to validate the current folders (create a new Commands→Tools category). (external tool)
+
+*7.* Automatically generate PDFs and OCR (external tool)
+
+In addition to 16 it would be nice to have a way to send a request to the reaper to auto-startup and grab or at least test for missing content and then exit. This would require reworking the preamble of fr so it skips all the user input.  
