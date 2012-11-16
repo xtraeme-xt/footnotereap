@@ -20,7 +20,9 @@ I want to move away from AutoIt ASAP. The debugging is too cumbersome. This is g
 == Version 0.3 Goals ==
 
 *9.* Allow for random-access saves (generate all information based on one page -- difficulties with this is that the ID won't necessarily map with page 1 id). 
+
 *10.* Add downloading in reverse
+
 *11.* Add starting from arbitrary points irregardless of direction (need fold3 page1 id for this) 
 
 This sprint will be about improving ways that we can get data off fold3. This should make the features of 16 more useful since theoretically when it finds something missing it will be able to hop around between the website with greater agility to fill holes. This will also help with the database features.
@@ -34,6 +36,7 @@ This is going to be a performance/bug-fix sprint. Any bizarre new issues that cr
 == Version 0.5 Goals ==
 
 *8.* Get more metadata per page from JS
+
 *5.* Generate CSV data when locating a new file not already in the local database 
 
 This build is going to be all about improving what data we can get and how we store it. This has to come before the database component otherwise the tables will be out of whack. Final data abstractions will happen at this point.
@@ -41,7 +44,9 @@ This build is going to be all about improving what data we can get and how we st
 == Version 0.6 Goals ==
 
 *2.* Add FTP functionality 
+
 *3.* Add database connectivity
+
 *4.* Finish the distributed workload feature 
 
 This build will finally implement trying to let other people participate in helping collect data and finding holes in the data set. It's very possible new data will be added to the website. So having spot-checks will be useful. One of the big problems is going to be that since the thing is so huge (~200 GBs) I will need to find a way to hook this all up through NFS / smbfs for the ftp.
@@ -49,6 +54,7 @@ This build will finally implement trying to let other people participate in help
 == Version 0.7 Goals ==
 
 *12.* Print live stats on main canvas
+
 *13.* Better support for letting the user input their username / password on resume 
 
 Usability and statistics sprint. I want to finally get a nice presentation mechanism in place. I'll probably also want to have live stats on the website as well. Perhaps I'll even consider adding in a contributor feature? This would require changing the database so I'll have to think about this in 0.6.
@@ -61,6 +67,7 @@ This build is for anything I haven't currently thought up. All features and othe
 == Version 0.9 Goals ==
 
 *16.* Auto-update client with new files based on version 
+
 *6.* Create an installer 
 
 Finishing touches and bug fixes. This is really v1 just in a late beta state
