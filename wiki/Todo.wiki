@@ -1,0 +1,17 @@
+#labels Phase-Design,Featured
+== Todo == 
+As of v0.0.1.0:
+  # Add FTP functionality
+  # Add database connectivity
+  # Finish the distributed workload feature
+  # Generate CSV data when locating a new file not already in the local database
+  # Create an installer
+  # Automatically generate PDFs and OCR
+  # Get more metadata per page from JS
+  # Allow for random-access saves
+  ## Add downloading in reverse 
+  ## Add starting from arbitrary points irregardless of direction (need fold3 page1 id for this)
+  # Print live stats on main canvas
+  # Better support for letting the user input their username / password on resume
+  # Heavy bandwidth causes faulty timing and click misplacement (throttling?)
+  # Add a routine to navigate through the local footnote.com folder to double check the IDs to see if additional naming information can be found to validate the current folders (create a new Commands?Tools category).
