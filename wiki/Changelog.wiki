@@ -15,21 +15,21 @@ Head = [http://wiki.razing.net/footnotereap/FootnoteReap_v0.0.1.2.3.zip v0.0.1.2
   * Now detects "Save As" and "Select location for download ..." after clicking "Entire Image"
 
 
-[http://wiki.razing.net/footnotereap/footnote_v0.0.1.2.exe v0.0.1.2] (2011-08-21) <!-- <toggledisplay status="show"> /-->
+[http://wiki.razing.net/footnotereap/footnote_v0.0.1.2.exe v0.0.1.2] (2011-08-21)
   * GUI fixes (the start/resume and initialize button toggles correctly now; and the 'about' dialog anchors properly to the main window in all cases)
   * improved logging tool / better debug features (to help detect and prevent infinite loops -- see "[[FootnoteReap#Tips|tips]]")
   * fixed several race conditions where the application would get stuck:
   ** trying to rediscover the "Entire Image" button,
   ** when resolving "Confirm Save As" during a collision, and 
-  ** an instance where the download would wait indefinitely for the data pump to start when the pipe was inactive <!-- </toggledisplay> /-->
+  ** an instance where the download would wait indefinitely for the data pump to start when the pipe was inactive 
 
 
-[http://wiki.razing.net/footnotereap/footnote_v0.0.1.1.exe v0.0.1.1] (2011-08-20)<!--  <toggledisplay status="hide"> /-->
+[http://wiki.razing.net/footnotereap/footnote_v0.0.1.1.exe v0.0.1.1] (2011-08-20)
   *bug fixes (better directory handling and more)
-  *using "ALT+D" now instead of "CTRL+L" for greater compatibility <!-- </toggledisplay> /-->
+  *using "ALT+D" now instead of "CTRL+L" for greater compatibility
 
 
-[http://wiki.razing.net/footnotereap/FootnoteReap_v0.0.1.0.zip v0.0.1.0] (2011-08-19) <!-- <toggledisplay status="show"> /-->
+[http://wiki.razing.net/footnotereap/FootnoteReap_v0.0.1.0.zip v0.0.1.0] (2011-08-19)
   *Basic feature set functional (downloading, resuming, recovery cases, automated directory creation, etc)
   *Global hotkeys (F10 - start, F11 - pause)
   *Logging feature set
