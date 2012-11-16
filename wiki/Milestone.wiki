@@ -66,4 +66,4 @@ Finishing touches and bug fixes. This is really v1 just in a late beta state
 
 == Version 1 Goals == 
 
-Should have all [Todo todo items] 1 through 15, but I may be willing to let 8 and 13 slide. 
+Should have all [Todo todo items] 1 through 15, but I may be willing to let 8 and 13 slide. At this point I'll do minor fixes, but I want to take what I learn from fr, download-naa-gov and start working on the generalized framework for collecting data across numerous sites. This gets into the idea of the TVS system. 
