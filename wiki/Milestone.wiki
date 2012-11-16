@@ -15,7 +15,11 @@ In addition to 16 it would be nice to have a way to send a request to the reaper
 
 *1.* Port to Python
 
+*17.* Platform agnostic (would be nice to get a functioning copy in firefox/chrome again and on Mac and Linux). 
+
 I want to move away from AutoIt ASAP. The debugging is too cumbersome. This is going to be a major time suck.
+
+Platform agnosticness may not be possible, but once I have everything in Python I'll see if I can get around the Chrome bug again.
 
 == Version 0.3 ==
 
