@@ -60,6 +60,7 @@ This build is for anything I haven't currently thought up. All features and othe
 
 == Version 0.9 Goals ==
 
+*16.* Auto-update client with new files based on version 
 *6.* Create an installer 
 
 Finishing touches and bug fixes. This is really v1 just in a late beta state
