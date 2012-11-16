@@ -1,4 +1,6 @@
 #labels Phase-Support,Phase-Deploy,Featured
+==Console Output and Logging Features==
+
 1. *Q:* I downloaded the FootnoteReapDbg.lnk but I couldn't get it to work.  I'm not sure what sort of file it is or how to get it to do anything.  
 
   <b>A:</b> The FootnoteReapDbg.lnk is the same type of file that exists for all of the shortcuts in the start menu. You can think of it like a one line batch or cmd script. If you ever want to see the command that it's executing. Right click on the lnk file, select properties, and take a look at the target field. In this case it should read:
