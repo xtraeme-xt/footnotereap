@@ -62,11 +62,11 @@ Usability and statistics sprint. I want to finally get a nice presentation mecha
 
 == Version 0.8 Goals ==
 
-This build is for anything I haven't currently thought up. All features and other major areas that need to be designed but weren't given a slot will get touched on here.
+This rev is for anything I haven't currently thought up. All features and other major areas that need to be designed but weren't given a slot will get touched on here.
 
 == Version 0.9 Goals ==
 
-*16.* Auto-update client with new files based on version 
+*16.* Auto-update client to new version 
 
 *6.* Create an installer 
 
@@ -74,4 +74,4 @@ Finishing touches and bug fixes. This is really v1 just in a late beta state
 
 == Version 1 Goals == 
 
-Should have all [Todo todo items] 1 through 15, but I may be willing to let 8 and 13 slide. At this point I'll do minor fixes, but I want to take what I learn from fr, download-naa-gov and start working on the generalized framework for collecting data across numerous sites. This gets into the idea of the TVS system. 
+Should have all [Todo todo items] 1 through 15, but I may be willing to let 8 and 13 slide. At this point I'll do minor fixes, but I want to take what I learn from fr, download-naa-gov and start working on the generalized framework for collecting data across numerous sites. This gets into the idea of the TVS system, IK's TC, and FS's STR. 
