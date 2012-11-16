@@ -1,6 +1,7 @@
 #labels Phase-Design,Featured
 == Todo == 
 As of v0.0.1.0:
+  # Port to Python
   # Add FTP functionality
   # Add database connectivity
   # Finish the distributed workload feature
