@@ -1,5 +1,5 @@
 #labels Phase-Design,Featured
-== Todo == 
+== Major Todos == 
 As of v0.0.1.0:
   # Port to Python
   # Add FTP functionality
@@ -16,3 +16,4 @@ As of v0.0.1.0:
   # Better support for letting the user input their username / password on resume
   # Heavy bandwidth causes faulty timing and click misplacement (throttling?)
   # Add a routine to navigate through the local footnote.com folder to double check the IDs to see if additional naming information can be found to validate the current folders (create a new Commands→Tools category).
+  # Upon finding a new case save it to the db and disk.
