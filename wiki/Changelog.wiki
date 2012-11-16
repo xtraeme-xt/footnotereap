@@ -17,7 +17,7 @@ Head = [http://wiki.razing.net/footnotereap/FootnoteReap_v0.0.1.2.3.zip v0.0.1.2
 
 [http://wiki.razing.net/footnotereap/footnote_v0.0.1.2.exe v0.0.1.2] (2011-08-21)
   * GUI fixes (the start/resume and initialize button toggles correctly now; and the 'about' dialog anchors properly to the main window in all cases)
-  * improved logging tool / better debug features (to help detect and prevent infinite loops -- see "[[FootnoteReap#Tips|tips]]")
+  * improved logging tool / better debug features (to help detect and prevent infinite loops -- see "[http://code.google.com/p/footnotereap/#Tips tips]")
   * fixed several race conditions where the application would get stuck:
     * trying to rediscover the "Entire Image" button,
     * when resolving "Confirm Save As" during a collision, and 
