@@ -1,4 +1,4 @@
-#labels Featured
+#labels Featured,Phase-Support
 == Change Log ==
 Head = [http://wiki.razing.net/footnotereap/FootnoteReap_v0.0.1.2.3.zip v0.0.1.2.3] (2012-02-18, Hotfix)
   * Fixed: Line 11298 (File "C:\Users\Extreme\Desktop\Footnote\footnote.exe"): Error: Variable used without being declared''
@@ -19,19 +19,19 @@ Head = [http://wiki.razing.net/footnotereap/FootnoteReap_v0.0.1.2.3.zip v0.0.1.2
   * GUI fixes (the start/resume and initialize button toggles correctly now; and the 'about' dialog anchors properly to the main window in all cases)
   * improved logging tool / better debug features (to help detect and prevent infinite loops -- see "[[FootnoteReap#Tips|tips]]")
   * fixed several race conditions where the application would get stuck:
-  ** trying to rediscover the "Entire Image" button,
-  ** when resolving "Confirm Save As" during a collision, and 
-  ** an instance where the download would wait indefinitely for the data pump to start when the pipe was inactive 
+    * trying to rediscover the "Entire Image" button,
+    * when resolving "Confirm Save As" during a collision, and 
+    * an instance where the download would wait indefinitely for the data pump to start when the pipe was inactive 
 
 
 [http://wiki.razing.net/footnotereap/footnote_v0.0.1.1.exe v0.0.1.1] (2011-08-20)
-  *bug fixes (better directory handling and more)
-  *using "ALT+D" now instead of "CTRL+L" for greater compatibility
+  * bug fixes (better directory handling and more)
+  * using "ALT+D" now instead of "CTRL+L" for greater compatibility
 
 
 [http://wiki.razing.net/footnotereap/FootnoteReap_v0.0.1.0.zip v0.0.1.0] (2011-08-19)
-  *Basic feature set functional (downloading, resuming, recovery cases, automated directory creation, etc)
-  *Global hotkeys (F10 - start, F11 - pause)
-  *Logging feature set
-  *Simple statistics (page and doc counts)
-  *Identifies new documents not previously stored in CSV.
+  * Basic feature set functional (downloading, resuming, recovery cases, automated directory creation, etc)
+  * Global hotkeys (F10 - start, F11 - pause)
+  * Logging feature set
+  * Simple statistics (page and doc counts)
+  * Identifies new documents not previously stored in CSV.
