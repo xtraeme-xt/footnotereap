@@ -60,6 +60,7 @@
 ;    one of the filenames. This causes it to use an old file name. THen it thinks it tries to not overwrite
 ;    and since the state is now different it can't even progress. This is a big issue. To repro use Google
 ;    Book Downloader. That seems to slow the connection down significantly.
+; 7. Somehow CTRL is getting stuck due to the console routines? 
 
 #include <WindowsConstants.au3>
 #include <GuiMenu.au3>
@@ -73,7 +74,7 @@
 #Include <Array.au3>
 #Include <Memory.au3>
 ;#include <nomadmemory.au3>
-#include <Console.au3>
+;#include <Console.au3>
 #include <misc.au3>
 #include "_CSVLib.au3"
 
@@ -82,16 +83,16 @@
 #include <ButtonConstants.au3>
 
 ;----------------- Global Definitions -----------------
-Const $version = "0.0.1.2.1"
+Const $version = "0.0.1.2.3"
 
 Dim $answer = 0
 Global $gNT = 1
 Global $gOffset = 172
-Global $gVerbosity
+;Global $gVerbosity
 Global $gCWD = @WorkingDir
 Global $gKeyName = "HKEY_CURRENT_USER\SOFTWARE\FoonoteReaper"
 Global $gChanges = 0
-Global $gChangesLabel
+;Global $gChangesLabel
 Global $gButton
 Global $gWindow
 Global $label5
@@ -130,13 +131,18 @@ Global $gCurrentURLRegSz = "gCurrentURL"
 Global $gCurrentDocumentStartURL = $gInitialURL
 Global $gCurrentDocumentStartURLRegSz = "gCurrentDocumentStartURL"
 
+Global $gFileExtension = "jpg"	;What if we do mixed extensions at some point?
+
 global $gStartResumeTotalPageCount = 0
 global $gStartResumeTotalPageCountRegSz = "gStartResumeTotalPageCount"
 global $gStartResumeTotalDocCount = 0 
 global $gStartResumeTotalDocCountRegSz = "gStartResumeTotalDocCount"
 
-global $gLoggerEnabled
-global $gLoggerEnabledRegSz = "gLoggerEnabled"
+;_For the foreeeable future I'm going to compile the application as a console app. So this isn't necessary since 
+;_a console app will always spawn a terminal whether I want it or not.
+
+;global $gLoggerEnabled 			;Should I default this to: = false
+;global $gLoggerEnabledRegSz = "gLoggerEnabled"
 global $gLoggerIgnoreLevel
 global $gLoggerIgnoreLevelRegSz = "gLoggerIgnoreLevel"
 
@@ -228,7 +234,7 @@ Global $gDisableLoggerLevels = $ENOTHING
 
 Func _ConsoleWrite($string)
 	ConsoleWrite($string)
-	if($gLoggerEnabled) then _Console_Write($string)
+	;if($gLoggerEnabled) then _Console_Write($string)
 EndFunc
 
 
@@ -247,6 +253,11 @@ Func OnOffOrError($keyname, $valuename)
 	return $temp
 EndFunc   ;==>OnOffOrError
 
+Func Assert($expression, $msg, $timeout = 0)
+	if($expression) Then
+		Logger($EASSERT, $expression & @CRLF & $msg, 1)
+	EndIf
+EndFunc
 
 Func Logger($code, $msg, $bMsgBox, $timeout = 0)
 	;Overall levels will be:
@@ -282,7 +293,7 @@ Func Logger($code, $msg, $bMsgBox, $timeout = 0)
 		Case $code = $EINTERNAL ;was 5
 			if $bMsgBox then MsgBox(48, "Internal Error", $msg, $timeout);
 			_ConsoleWrite("Internal Error: " & $msg & @CRLF)
-		case $code = $EUSERVERBOSE
+		Case $code = $EUSERVERBOSE
 			if $bMsgBox then MsgBox(48, "User Verbose", $msg, $timeout);
 			_ConsoleWrite("UVerbose: " & $msg & @CRLF)
 		Case $code = $EUSER
@@ -460,24 +471,32 @@ RemoveAllLoggerExceptions()
 #ce
 
 
-Global Enum Step +1 $ECLEAN_EXIT = 0, $EPREMATURE_EXIT, $E2_EXIT, $E3_EXIT, $E4_EXIT, $EINTERNALERR_EXIT
+Global Enum Step +1 $ECLEAN_EXIT = 0, $EEMERGENCY_EXIT, $EPREMATURE_EXIT, $E3_EXIT, $E4_EXIT, $EINTERNALERR_EXIT
 Func CleanupExit($code, $msg, $bMsgBox)
 	Logger($ETRACE, "CleanupExit()", false)
 	;IMPL -- two params? code, message, msgbox and then write location or other details.
 	;the code will determine if we exit (i.e. 5)
 	;Exit(5)  ;worst error
-	;0 is (verbosity just normal clean exit?)
+	;0 is (verbosity just normal clean exit?)	
 	;1 is (perhaps the user quitting prematurely?)
-	;2-4 ... ?
-	;5 is internal error
+	;2 is (a problem where the program has some unsolvable state and must quit)
+	;3-4 ... ?
+	;5 is internal error (worst case scenario, something really screwed up worse than premature like bad data)
 	Select
-		Case $code = 0
+		Case $code = $ECLEAN_EXIT
 			if $bMsgBox then MsgBox(48, "Clean Exit", $msg);
 			_ConsoleWrite("Clean Exit: " & $msg)
-		Case $code = 5
+		Case $code = $EEMERGENCY_EXIT
+			if $bMsgBox then MsgBox(48, "Emergency Exit", $msg);
+			_ConsoleWrite("Emergency Exit: " & $msg)
+		Case $code = $EPREMATURE_EXIT
+			if $bMsgBox then MsgBox(48, "Premature Exit", $msg);
+			_ConsoleWrite("Premature Exit: " & $msg)
+		Case $code = $EINTERNALERR_EXIT
 			if $bMsgBox then MsgBox(48, "Internal Error", $msg);
 			_ConsoleWrite("Internal Error Exit: " & $msg)
 	EndSelect
+	;if($gLoggerEnabled) then _Console_Free()
 	Exit($code)
 EndFunc   ;==>CleanupExit
 
@@ -1015,6 +1034,7 @@ Func MakeActive($winState = "")
 EndFunc   ;==>MakeActive
 
 
+;Add a parameter to specify sleep time for GetClip?
 Func GetClip(ByRef $clip, $sendCtrlC = false, $count = "")
 	Logger($ETRACE, "GetClip()", false)
 	
@@ -1024,13 +1044,15 @@ Func GetClip(ByRef $clip, $sendCtrlC = false, $count = "")
 		$oldclip = ClipGet()
 		Logger($EVERBOSE, "$oldclip: " & $oldclip, false)
 		ClipPut("") ; May want to make sure we have something we can check for.
+		Send("{CTRLDOWN}")
 		Send("^c")
+		Send("{CTRLUP}")
 		Sleep(200 * $gSleepMultiplier) ; give it some time to grab it as the transfer might take a moment
 	endif
 	
 	$clip = ClipGet()
 	$ret = @error
-	;ConsoleWrite("THIS IS THE TEMPCLIP: " & $clip & @CRLF)
+	ConsoleWrite("THIS IS THE TEMPCLIP: " & $clip & @CRLF)
 	
 	if($ret <> 0) then
 		if($ret = 1) then
@@ -1270,6 +1292,11 @@ EndFunc   ;==>TogglePause
 ;~ 	Logger($ETRACE, "Stop()", false)
 ;~ EndFunc   ;==>Stop
 
+Func EmergencyExit()
+	Logger($ETRACE, "EmergencyExit()", false)
+	CleanupExit($EEMERGENCY_EXIT, "Hotkey shutdown...", false)
+EndFunc
+
 
 Func StartResumeInit()
 	; returns false if error, true if success
@@ -1457,7 +1484,7 @@ Func GetDirectoryNameFromURL($url)
 		$oIE = _IEAttach($gBrowserWindowId, "HWND") 
 		;MsgBox(0, "The URL", _IEPropertyGet ($oIE, "locationurl"))
 		$bodyText = _IEBodyReadText($oIE)
-		;ConsoleWrite($bodyText)
+		;Assert(false, $bodyText)
 		
 		$yearArray = StringRegExp($bodyText, "Year:\s*(\d+)", 1)
 		if(@error > 0) then 
@@ -1573,6 +1600,7 @@ Func StartDownloadImage()
 	Local $count = 0
 	Local $retCode = false
 	Local $newurl = ""
+	Local $page1 = "Page 1.jpg"
 	
 	do
 		GetCurrentURL($newurl)
@@ -1581,7 +1609,7 @@ Func StartDownloadImage()
 		if($count = 15) then return $retCode
 		$count += 1
 		;creating a few "text" loop patterns will help me locate where we're getting stuck
-		Logger($EINFINITELOOPDBG, "44", true) 
+		Logger($EINFINITELOOPDBG, "44", false) 
 	until(StringCompare($newurl, "") <> 0 And ValidFootnotePage($newurl))
 	$gCurrentURL = $newurl
 	$count = 0
@@ -1589,7 +1617,9 @@ Func StartDownloadImage()
 	Logger($EUSERVERBOSE, "Currently working on URL: " & $gCurrentURL, false)
 	MouseClick("left", $gEntireImageButton[0], $gEntireImageButton[1])
 	Sleep(1000 * $gSleepMultiplier)
-	while (Not WinExists("Select location") or Not WinExists("Save As")) ; or $testOnce = true) 
+	
+	;Logger($EUSERVERBOSE, Not WinExists("Select location"), true)
+	while (Not WinExists("Select location") and Not WinExists("Save As")) ; or $testOnce = true) 
 		;$testOnce = false
 		;To handle the: 
 		;	"Oops, we couldn't load information about this image"
@@ -1598,6 +1628,12 @@ Func StartDownloadImage()
 		; We should just try clicking to go back. Maybe we can also try adding another button for 
 		; "close" and "try again"? That would be hard though because we don't know where they are
 		; precisely.
+		;Another condition that comes up is when the pane partially loads and the download "starts"
+		; but it never seems to actually start grabbing data. Originally I thought a simple refresh 
+		; would solve the issue, but it doesn't. Then I thought maybe navigating forward and backwards
+		; might jostle the system. Unfortunately it seems when this happens next, prev, and current
+		; all refuse to load. So the only solution then is tearing down the browser and reloading.
+		; Kind of dramatic, but it's probably better than getting completely stuck.
 		$count += 1
 		if($count = 2) then 
 			MouseClick("left", $gPrevButton[0], $gPrevButton[1])
@@ -1610,16 +1646,27 @@ Func StartDownloadImage()
 		EnableEntireImageDialog()
 		Sleep(1000 * $gSleepMultiplier)
 		MouseClick("left", $gEntireImageButton[0], $gEntireImageButton[1])
-		Logger($EINFINITELOOPDBG, "zz", true) 
+		Logger($EINFINITELOOPDBG, "zz", false) 
 		Sleep(1000 * $gSleepMultiplier)
 	Wend
+		
+;~ 	PushLoggerIgnoreLevel($EVERBOSE, false)
 	GetClip($clip, true)
+;~ 	PopLoggerIgnoreLevel()
+	
 	;BROWSER DEPENDENT ...
 	;Send("{Tab}{Tab}{Tab}{ENTER}",0)
 	;Consolewrite("clip: " & $clip & @CRLF)
 	
 	;TODO: On mom's box during the first init this came out as "Page 1" not "Page 1.jpg" causing it to think we had case #2
-	if(StringCompare($clip, "Page 1.jpg") = 0) then
+;~ 	Logger($EUSERVERBOSE, $gFileExtension, false)
+	If(StringCompare(StringRight($clip, 3), $gFileExtension) <> 0) Then
+		$page1 = "Page 1"
+		Logger($EUSERVERBOSE, "No ." &  $gFileExtension & " in the 'Save As' dialog. Looking for: " & $page1, false)
+	EndIf
+;~ 	Logger($EUSERVERBOSE, $page1, false)
+		
+	if(StringCompare($clip, $page1) = 0) then
 		;Create new directory
 		$gCurrentDocumentStartURL = $gCurrentURL
 		RegWrite($gKeyName, $gCurrentDocumentStartURLRegSz, "REG_SZ", $gCurrentDocumentStartURL)
@@ -1628,7 +1675,7 @@ Func StartDownloadImage()
 		;EndIf
 		SetSaveDialogDirectory($dir, $clip)
 		$retCode = 2
-	elseif($gStartResumeSessionPageCount = 0 And StringCompare($clip, "Page 1.jpg") <>  0) Then
+	elseif($gStartResumeSessionPageCount = 0 And StringCompare($clip, $page1) <> 0) Then
 		;Need to make sure we have a sane directory
 		
 		;TODO: In what case should I use this? $dir = $gCurrentSavetoDirectory 
@@ -1701,7 +1748,7 @@ Func StartDownloadImage()
 		Sleep(100 * $gSleepMultiplier)
 		
 		;creating a few "text" loop patterns will help me locate where we're getting stuck
-		Logger($EINFINITELOOPDBG, "st", true) 
+		Logger($EINFINITELOOPDBG, "st", false) 
 		;TODO: Add generic routine for breaking out if this fails?
 		if(WinExists("Confirm Save As")) then 
 			WinActivate("Confirm Save As")
@@ -1746,7 +1793,7 @@ Func StartDownloadImage()
 				endif
 			endif
 			;creating a few "text" loop patterns will help me locate where we're getting stuck
-			Logger($EINFINITELOOPDBG, ".", true) 
+			Logger($EINFINITELOOPDBG, ".", false) 
 			;ConsoleWrite("currentFileSize: " & $currentFileSize & ", lastFileSize: " & $lastFileSize & @CRLF)
 		Until($lastFileSize = $currentFileSize)
 		Logger($EUSER, "Downloading '" & $clip & "' took " & _DateDiff('s', "2011/07/01 00:00:00", _NowCalc()) - $origsecs & " seconds to complete", false)
@@ -2632,9 +2679,15 @@ EndFunc   ;==>StateMachine
 Opt("WinTitleMatchMode", 2)
 ;Opt("GUIOnEventMode", 1)
 
-$gLoggerEnabled = OnOffOrError($gKeyName, $gLoggerEnabledRegSz)
-if($gLoggerEnabled = "-1") then RegWrite($gKeyName, $gLoggerEnabledRegSz, "REG_DWORD", true)
-if($gLoggerEnabled) then _Console_Alloc()
+;$gLoggerEnabled = OnOffOrError($gKeyName, $gLoggerEnabledRegSz)
+
+;NOTE: When loggerEnabled is disabled we're presuming we're writing to Stdout (when a person runs footnote.exe from the batch)
+;      When LoggerEnabled is enabled we presume we write to the Alloc'ed window (basically when a person runs footnote.exe standalone)
+;if($gLoggerEnabled = "-1") then RegWrite($gKeyName, $gLoggerEnabledRegSz, "REG_DWORD", false)
+;if($gLoggerEnabled) then _Console_Alloc()
+
+WinActivate("cmd.exe")
+Logger($EUSER, "FootnoteReap ver: " & $version, false)
 
 $debug = OnOffOrError($gKeyName, $gDebugRegSz)
 if($debug = "-1") then 
@@ -2693,6 +2746,7 @@ EndIf
 
 HotKeySet("{F10}", "StartResume")
 HotKeySet("{F11}", "TogglePause")
+HotKeySet("^!+e", "EmergencyExit")
 ;~ HotKeySet("{ESC}", "Stop")
 
 ;GuiSetIcon($gCWD & "\a8950027.ico", 0)
@@ -2709,7 +2763,7 @@ SetOwnerDrawn($commands, $dashitem, "")
 $startitem = GuiCtrlCreateMenuItem("&Start (F10)", $commands)
 $pauseitem = GuiCtrlCreateMenuItem("&Pause (F11)", $commands)
 ;$stopitem = GuiCtrlCreateMenuItem("S&top", $commands)
-$exititem = GuiCtrlCreateMenuItem("&Exit", $commands)
+$exititem = GuiCtrlCreateMenuItem("&Exit (Alt+Ctrl+Shift+E)", $commands)
 
 $edit = GuiCtrlCreateMenu("&Edit")
 ;$resetitem = GuiCtrlCreateMenuItem("&Undo Changes", $edit)
@@ -2764,4 +2818,3 @@ do
 Until $msg = $GUI_EVENT_CLOSE OR $msg = $exititem
 
 CleanupExit($ECLEAN_EXIT, "Shutting down...", false)
-if($gLoggerEnabled) then _Console_Free()
