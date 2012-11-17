@@ -53,7 +53,9 @@ This build is going to be all about improving what data we can get and how we st
 
 *4.* Finish the distributed workload feature 
 
-This build will finally implement trying to let other people participate in helping collect data and finding holes in the data set. It's very possible new data will be added to the website. So having spot-checks will be useful. One of the big problems is going to be that since the thing is so huge (~200 GBs) I will need to find a way to hook this all up through NFS / smbfs for the ftp.
+This build will finally implement trying to let other people participate in helping collect data and finding holes in the data set. It's very possible new data will be added to the website. So having spot-checks will be useful. One of the big problems is going to be that since the thing is so huge (~200 GBs) I will need to find a way to hook this all up through NFS / smbfs for the ftp. 
+
+It would also be nice to allow people to submit improvements. So if we see the case id is wrong. The database could hold on to the correction and farm that out to everyone else. Maybe even consider trying to automatically send updates to fold3? That is probably too much work, but maybe I could just send them the database? Or participants could manually check off that they logged the problem.
 
 == Version 0.7 ==
 
