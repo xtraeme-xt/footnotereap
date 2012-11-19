@@ -26,6 +26,6 @@
    http://s6.postimage.org/i52g0e6pr/hdhegajb.png
 
 
-3. *Q:* After running the Reaper for about 30 minutes, I exited the Reaper and found that a log file was there but it had zero bytes (and clicking on it showed it to be empty). Is it OK if I just give you a copy paste of the last few lines?
+3. *Q:* After running the Reaper for about 30 minutes, I exited the Reaper but I don't know where the log file is. Is it OK if I just give you a copy paste of the last few lines?
 
-  <b>A:</b> I'd prefer it at all possible to have the entire log over a cut and paste. As a quick test, grab and unzip the [http://code.google.com/p/footnotereap/downloads/list latest build]. After it's done inflating run FootnoteReapDbg. Once the application has run for a second or two quit out of the program. Then check in the log folder. The name should look something like `Sun 02-12-2012_13.01.21.76_footnotereap_log`. If the log has a non-zero  size everything is working. In the event you're seeing something different. Please search the [http://code.google.com/p/footnotereap/issues/list issue list]. 
+  <b>A:</b> I'd prefer it at all possible to have the entire log over a cut and paste. As a quick test, grab and unzip the [http://code.google.com/p/footnotereap/downloads/list latest build]. After it's done inflating run FootnoteReapDbg. Once the application has run for a second or two quit out of the program. Then check in the `log` folder. The name should look something like `Sun 02-12-2012_13.01.21.76_footnotereap_log`. If the log has a non-zero  size everything is working. In the event you're seeing something different. Please search the [http://code.google.com/p/footnotereap/issues/list issue list]. 
