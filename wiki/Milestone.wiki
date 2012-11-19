@@ -3,7 +3,7 @@
 
 == Version 0.1 (Alpha) ==
 
-The major tasks and [Todo todos] I want to complete for the next milestone are:
+The major tasks and [Todo todos] I want to complete for the upcoming milestone are:
 
 *15.* Add a routine to navigate through the local footnote.com folder to double check the IDs to see if additional naming information can be found to validate the current folders (create a new Commands→Tools category). (external tool)
 
