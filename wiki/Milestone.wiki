@@ -9,7 +9,7 @@ The major tasks and [Todo todos] I want to complete for the next milestone are:
 
 *7.* Automatically generate PDFs and OCR (external tool)
 
-In addition to 16 it would be nice to have a way to send a request to the reaper to auto-startup and grab or at least test for missing content and then exit. This would require reworking the preamble of fr so it skips all the user input.  
+In addition to 16 it would be nice to have a way to send a request to the reaper to auto-startup and grab or at least test for missing content and then exit. This would require reworking the preamble of footnotereap so it skips all the user input.  
 
 == Version 0.2 ==
 
@@ -80,4 +80,4 @@ Finishing touches and bug fixes. This is really v1 just in a late beta state
 
 == Version 1 == 
 
-Should have all [Todo todo items] 1 through 15, but I may be willing to let 8 and 13 slide. At this point I'll do minor fixes, but I want to take what I learn from fr, download-naa-gov and start working on the generalized framework for collecting data across numerous sites. This gets into the idea of the TVS system, IK's TC, and FS's STR. 
+Should have all [Todo todo items] 1 through 15, but I may be willing to let 8 and 13 slide. At this point I'll do minor fixes, but I want to take what I learn from foonotereap, download-naa-gov and start working on the generalized framework for collecting data across numerous sites. This gets into the idea of the TVS system, IK's TC, and FS's STR. 
