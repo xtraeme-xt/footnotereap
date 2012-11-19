@@ -9,7 +9,7 @@ The major tasks and [Todo todos] I want to complete for the upcoming milestone a
 
 *7.* Automatically generate PDFs and OCR (external tool)
 
-In addition to 16 it would be nice to have a way to send a request to the reaper to auto-startup and grab or at least test for missing content and then exit. This would require reworking the preamble of footnotereap so it skips all the user input.  
+In addition to 16 it would be nice to have a way to send a request to the reaper to auto-startup and grab (or at least test for) missing content and then exit. This would require reworking the preamble of footnotereap so it skips all the user input.  
 
 == Version 0.2 ==
 
