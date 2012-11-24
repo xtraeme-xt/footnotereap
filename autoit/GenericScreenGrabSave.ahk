@@ -18,7 +18,7 @@
 * After it's done take all of the images and stitch them together into whatever happens to be your favorite format (cbr, etc).
 *  
 * TODO:
-*  1. I need to make sure I return all windows to their previous location and size on startup and # change
+*  1. I need to make sure I return all windows to their previous location and size on startup
 *  2. It would be nice to have some sort of GUI so I don't have to edit the script every time I want to update
 * 		the numbers
 *  3. It would also be nice to have a page "comparison" feature to make sure I didn't screw up somewhere.
