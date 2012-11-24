@@ -115,6 +115,8 @@ Global $gDebugRegSz = "gDebug"
 
 Global $gSleepMultiplier = 1
 Global $gSleepMultiplierRegSz = "gSleepMultiplier"
+Global $gWaitDelay = 250	; this is the default: Opt("WinWaitDelay", 250)        ;250 milliseconds
+Global $gWaitDelayRegSz = "gWaitDelay"
 
 Global $gSavetoDirectory = ""
 Global $gSavetoDirectoryRegSz = "gSaveToDirectory"
@@ -132,11 +134,6 @@ Global $gCurrentDocumentStartURL = $gInitialURL
 Global $gCurrentDocumentStartURLRegSz = "gCurrentDocumentStartURL"
 
 Global $gFileExtension = "jpg"	;What if we do mixed extensions at some point?
-
-global $gStartResumeTotalPageCount = 0
-global $gStartResumeTotalPageCountRegSz = "gStartResumeTotalPageCount"
-global $gStartResumeTotalDocCount = 0 
-global $gStartResumeTotalDocCountRegSz = "gStartResumeTotalDocCount"
 
 ;_For the foreeeable future I'm going to compile the application as a console app. So this isn't necessary since 
 ;_a console app will always spawn a terminal whether I want it or not.
@@ -196,10 +193,19 @@ Dim $gBrowserWinSize[2] = [0, 0]
 
 
 ;----------- Statistics -------------
+global $gStartResumeTotalPageCount = 0
+global $gStartResumeTotalPageCountRegSz = "gStartResumeTotalPageCount"
+global $gStartResumeTotalDocCount = 0 
+global $gStartResumeTotalDocCountRegSz = "gStartResumeTotalDocCount"
+global $gCumulativeAvgTimeToDownload = 0
+global $gOverallAverageTimeToDownloadRegSz = "gCumulativeAvgTimeToDownload"
+
+
 global $gStartResumeSessionPageCount = 0
 global $gStartResumeSessionDocCount = 0
 global $gStartResumeTotalSessionPageCount = 0
 global $gStartResumeTotalSessionDocCount = 0
+global $gAvgTimeToDownload = 0 
 ;--------- End Statistics -----------
 
 
@@ -217,7 +223,7 @@ Global $setitem, $downloaditem, $nextitem, $previtem , $entireimageitem
 Global $checkitem, $checkdownloaditem, $checknextitem, $checkprevitem, $checkentireimageitem
 Global $verifybuttons
 
-Global $help, $readmeitem, $aboutitem 
+Global $help, $projectitem, $aboutitem 
 
 Global $initializebutton 
 ;-------End GUI elements-------------
@@ -226,7 +232,6 @@ Global $gCSVArray
 ;----------------End Global Definitions-----------------
 
 
-;Global $ENOTHING = 0
 Global Enum Step +2 $EINFINITELOOPDBG=1, $EVERBOSE, $ETRACE, $EASSERT, $EUNHANDLED, $EINTERNAL, $EUSER
 Global Enum Step +2 $ENOTHING = 0, $EUSERVERBOSE = 12
 Global $gDisableLoggerLevels = $ENOTHING
@@ -244,20 +249,56 @@ Func OnOffOrError($keyname, $valuename)
 	;$error = @Error
 	If $temp = "" AND @Error Then
 		;If $error > 0 Then  $error = -($error + 2 )
-		Logger($EVERBOSE, "$temp: " & $temp & ", @Error: " & @Error, false)
+		Logger($EVERBOSE, "@Error: " & @Error, false)
 		return -1
 	EndIf
 	if($temp = "-1") then
+		;XT: Never seen this come up remove eventually?
 		Logger($EUNHANDLED, "FIX ME: Returning a value of -1 rather than an ERROR as -1!!!!!", true)
 	EndIf
 	return $temp
 EndFunc   ;==>OnOffOrError
 
-Func Assert($expression, $msg, $timeout = 0)
-	if($expression) Then
-		Logger($EASSERT, $expression & @CRLF & $msg, 1)
+
+Func InitializeOrReadRegistryEntry($keyname, $regsz, ByRef $global, $type = "REG_SZ")	
+	Local $read = OnOffOrError($keyname, $regsz)
+	if($read <> -1) then 
+		$global = $read
+	else 
+		RegWrite($keyname, $regsz, $type, $global)
+	endif
+	return $global
+EndFunc
+
+
+;Technically I use two types of Asserts(). Ones where I want to evaluate a condition.
+;And another where a condition has already been satisfied that is an edge case where
+;I attempt to do something to address it, but I expect there might be bad behavior. 
+;For the second type just use either:
+;  Logger($EASSERT, "Year is in a nonstandard/unknown format: " & $year, true, 60)
+;   Or
+;  AssertMsg()
+Func AssertMsg($msg, $bMsgBox = true, $timeout = 60)
+	Assert(false, "AssertMsg:", $msg, $bMsgBox, $timeout)
+EndFunc
+	
+	
+Func Assert($expression, $textExpression, $msg, $bMsgBox = true, $timeout = 60)		
+	;Even though I can execute an expression locally:
+	;  if(_Iif(IsString($expression), Execute($expression), $expression))
+	;If it's not composed of global values I would need to pass in all the parameters to do the 
+	;evaluations. This is overkill. Since we don't have any preprocessor features I just 
+	;duplicate the expression first to evaluate the condition locally in the call and second 
+	;to give a text representation to display what was being evaluated in the assert popup
+	
+	if(NOT $expression) Then
+		Logger($EASSERT, $textExpression & @CRLF & $msg, $bMsgBox, $timeout)
+		return true
+	else 
+		return false
 	EndIf
 EndFunc
+
 
 Func Logger($code, $msg, $bMsgBox, $timeout = 0)
 	;Overall levels will be:
@@ -1411,8 +1452,11 @@ Func StartResumeInit()
 	return true
 EndFunc   ;==>StartResumeInit
 
+
 Func MonthNameToNumber($monthName, $prependZero = false)
-	Logger($ETRACE, "MonthNameToNumber()", false)
+	PushLoggerIgnoreLevel($ENOTHING, false)
+	Logger($ETRACE, "MonthNameToNumber(" & $monthName & "," & $prependZero & ")", false)
+
 	if( StringLeft($monthName, 1) = "0" Or StringLeft($monthName, 1) = "1") then return $monthName
 	$month = 0
 	Select
@@ -1440,13 +1484,19 @@ Func MonthNameToNumber($monthName, $prependZero = false)
 			$month = 11
 		Case $monthName = "december"
 			$month = 12
+		Case Else
+			;Possible that we might get jan, feb, etc. Also this is necessary for season name
+			Logger($EVERBOSE, "MonthNameToNumber() expected a full month name, but received: " & $monthName, false)
+			$month = $monthName
 	EndSelect
-	if($prependZero And $month < 10) then $month = "0" & $month
+	if($prependZero And IsNumber($month) And $month < 10) then $month = "0" & $month
 	return $month
+	PopLoggerIgnoreLevel()
 EndFunc   ;==>MonthNameToNumber
 
 Global $gDynamicCreateNewDirectory = true
 Func GetDirectoryNameFromURL($url)
+	Logger($ETRACE, "GetDirectoryNameFromURL(" & $url & ")", false)
 	;strlen(http://www.footnote.com/image/#1) = 33
 	;strlen(http://www.fold3.com/image/#1 = 30
 	Local $len = StringLen($gBaseURL & "image/#1") + 1
@@ -1454,7 +1504,7 @@ Func GetDirectoryNameFromURL($url)
 	Local $array = 0
 	Local $dir = ""
 	Local $ret = 0 
-	Local $year, $month, $docid, $location
+	Local $year, $monthseason, $docid, $location
 	
 	$arraySearch = _CSVSearch($gCSVArray, $id, "|")
 	;_ArrayDisplay($arraySearch, 'Your file with "|" as delimiter')
@@ -1465,7 +1515,7 @@ Func GetDirectoryNameFromURL($url)
 	Logger($EUSER, "Found new document id#: " & $id, false)
 	if($array <> 0 And IsArray($array) And $array[0] > 0) Then
 		$year = $array[2] ;[1]
-		$month = $array[3] ;[2]
+		$monthseason = $array[3] ;[2]
 		$docid = $array[1]
 		$location = $array[4]
 		if($docid <> $id) then Logger($EUSERVERBOSE, "Data mismatch in CSV. $docid (" & $docid & ") isn't the same as $id (" & $id & ").", true)
@@ -1484,40 +1534,30 @@ Func GetDirectoryNameFromURL($url)
 		$oIE = _IEAttach($gBrowserWindowId, "HWND") 
 		;MsgBox(0, "The URL", _IEPropertyGet ($oIE, "locationurl"))
 		$bodyText = _IEBodyReadText($oIE)
-		;Assert(false, $bodyText)
+		;Assert(true, $bodyText)
 		
-		$yearArray = StringRegExp($bodyText, "Year:\s*(\d+)", 1)
-		if(@error > 0) then 
-			;Logger($EUSER, @error, 0)
-			$year = "xxxx"
-		Else
-			$year = $yearArray[0]
-		endif
+		$year = StringRegExpMatch($bodyText, "Year:\s*(\d+)", 1, "xxxx")
+				
 		$monthArray = StringRegExp($bodyText, "Month Season Number:\s*(\d+)", 1)
 		if(@error > 0) then 
 			;Logger($EUSER, @error, 1)
-			$month = "xx"
+			$monthseason = "xx"
 		Else
-			$month = $monthArray[0]
+			$monthseason = $monthArray[0]
+			if($monthseason > 12) Then
+				$seasonArray = StringRegExp($bodyText, "Month:\s*(\w+)", 1)
+				Assert(@error > 0, "@error > 0", "month season number ($monthseason) > 12, but season is undefined")
+				$monthseason = $seasonArray[0]
+				Logger($EVERBOSE, "season name is: " & $monthseason, false)
+			endif
 		endif
-		$locationArray = StringRegExp($bodyText, "(?m)Location:\s*(.*)\s{2,}$", 1)
-		if(@error > 0) then 
-			;Logger($EUSER, @error, 1)
-			$location = "[BLANK]"
-		Else
-			$location = $locationArray[0]
-		endif
-		$incidentArray = StringRegExp($bodyText, "Incident Number:\s*(\d+)", 1)
-		if(@error > 0) then 
-			;Logger($EUSER, @error, 1)
-			$incident = ""
-		Else
-			$incident = $incidentArray[0]
-		EndIf
+		
+		$location = StringRegExpMatch($bodyText, "(?m)Location:\s*(.*)\s{2,}$", 1, "[BLANK]")		
+		$incident = StringRegExpMatch($bodyText, "Incident Number:\s*(\d+)", 1, "")
 		
 		$docid = $id
 		;ConsoleWrite($year & @CRLF)
-		;ConsoleWrite($month & @CRLF)
+		;ConsoleWrite($monthseason & @CRLF)
 		;ConsoleWrite($location & @CRLF)
 		;ConsoleWrite($incident & @CRLF)
 		if($incident <> "") Then
@@ -1531,15 +1571,19 @@ Func GetDirectoryNameFromURL($url)
 	;Windows doesn't allow files with periods and no subsequent characters at the end of the filename.
 	$location = StringRegExpReplace($location, "(?m)\.$", "")
 	
-	if(StringCompare($year, "[illegible]") = 0 or StringCompare($year,"[blank]") = 0) Then $year = "xxxx"
-	if(StringCompare($month, "[illegible]") = 0 or StringCompare($month, "[blank]") = 0 or $month = "0") Then
-		Logger($EUSERVERBOSE, $month, true, 60)
-		$month = "xx"
-	else
-		$month = MonthNameToNumber($month, true)
+	if(StringCompare($year, "[illegible]") = 0 or StringCompare($year,"[blank]") = 0) Then 
+		AssertMsg("Year is in a nonstandard/unknown format: " & $year, true, 60)
+		$year = "xxxx"
 	EndIf
 	
-	$dir = $gSavetoDirectory & "\" & $year & "." & $month & " - " & $docid & " - " & $location
+	if(StringCompare($monthseason, "[illegible]") = 0 or StringCompare($monthseason, "[blank]") = 0 or $monthseason = "0") Then
+		Logger($EUSERVERBOSE, "Month unclear tag: " & $monthseason, true, 60)
+		$monthseason = "xx"
+	else
+		$monthseason = MonthNameToNumber($monthseason, true)		
+	EndIf
+	
+	$dir = $gSavetoDirectory & "\" & $year & "." & $monthseason & " - " & $docid & " - " & $location
 	return $dir
 EndFunc
 
@@ -1575,15 +1619,43 @@ EndFunc   ;==>DirectoryManager
 
 
 Func SetSaveDialogDirectory($dir, $clip)
+	; Issue 6: 	Filename/Path gets prematurely shortened in the Save As dialog
+	Logger($ETRACE, "SetSaveDialogDirectory(" & $dir & ", " & $clip & ")", false)
 	Send($dir, 1)
 	Send("{ENTER}", 0)
 	Sleep(500 * $gSleepMultiplier)
 	if(WinExists("Select location for download")) Then
-		Send("^a",0)
+		;Send("^a",0)
 		Send($clip, 1)
+		Sleep(500 * $gSleepMultiplier)
 	EndIf
 	;Logger($EUSERVERBOSE, "leaving SetSaveDialogDirectory(" & $dir & ", " & $clip & ")", false)
 EndFunc
+
+
+Func StringGetLenChars(ByRef $origstring, $outlen)
+	Local $actuallen = StringLen($origstring)
+	Logger($ETRACE, "StringGetLenChars(" & $actuallen & ", " & $outlen & ")", false)
+	;_Iif($len <= 80, $origstring, StringTrimRight($origstring, $len-80))
+	return _Iif($actuallen <= $outlen, $origstring, StringTrimRight($origstring, $actuallen-$outlen))
+EndFunc
+
+
+Func StringRegExpMatch($origstring, $pattern, $flag = 0, $errorstring = -1, $offset = 1)
+	Logger($ETRACE, "StringRegExpMatch(" &  StringGetLenChars($origstring, 80) & ", " & $pattern & ", " & $flag & ", " & $errorstring & ", " & $offset & ")", false)
+	Local $resultstring = ""
+	$returnArray  = StringRegExp($origstring, $pattern, $flag, $offset)
+	if(@error > 0) then 
+		Logger($EUSERVERBOSE, "err: " & @error & ", using: " & $errorstring, false, 60)
+		if($errorstring <> -1) Then
+			$resultstring  = $errorstring
+		endif
+	Else
+		$resultstring = $returnArray[0]
+	endif
+	return $resultstring
+EndFunc
+
 
 ;Global $testOnce = true
 Global $gDirectoryNotSet = false
@@ -1683,27 +1755,31 @@ Func StartDownloadImage()
 		$dir = GetDirectoryNameFromURL($gCurrentURL)
 		$list = _FileListToArray($gSavetoDirectory)
 		$finalDir = ""
-		
+
+
 		;Logger($EUSERVERBOSE, $dir, true)
-		$partiallyCorrectNameArray  = StringRegExp($dir, "(?m)\\([\d{4,}|xxxx].*)$", 1)
-		if(@error > 0) then 
-			Logger($EUSER, @error, 1)
-		Else
-			$partiallyCorrectName = $partiallyCorrectNameArray[0]
-		endif
+		$partiallyCorrectName = StringRegExpMatch($dir, "(?m)\\([\d{4,}|xxxx].*)$", 1)
 		;Logger($EUSER, $partiallyCorrectName, true)
 		
+		;The left hand side is usually year.month or dddd.dd
 		$correctLeftHandSide = StringLeft($partiallyCorrectName, 7)
-		$locationArray = StringRegExp($partiallyCorrectName, "(?m)^.*\-\s+\d+\s+\-(.*)$", 1)
-		if(@error > 0) then 
-			Logger($EUSER, @error, 1)
-		Else
-			$correctRightHandSide = $locationArray[0]
+		;ConsoleWrite($correctLeftHandSide & @CRLF)
+		
+		;For nonstandard seasons ...
+		if(Not IsNumber(Number(StringRight($correctLeftHandSide, 1)))) Then
+			$correctLeftHandSide = StringRegExpMatch($partiallyCorrectName, "(?m)([\d{4,}|xxxx].*)\s+\-.*$", 1)
+			Assert($correctLeftHandSide <> "", "$correctLeftHandSide <> """, true)
 		endif
+
+		$correctRightHandSide = StringRegExpMatch($partiallyCorrectName, "(?m)^.*\-\s+\d+\s+\-\s+(.*)$", 1)
 		;Logger($EUSERVERBOSE, $correctRightHandSide, true)
 		
+		ConsoleWrite($partiallyCorrectName & @CRLF)
+		ConsoleWrite($correctLeftHandSide & @CRLF)
+		ConsoleWrite($correctRightHandSide & @CRLF)
+		
 		for $I = 0 to UBound($list)-1
-			if(StringCompare(StringLeft($list[$I], 7), $correctLeftHandSide) = 0 and _ 
+			if(StringCompare(StringLeft($list[$I], StringLen($correctLeftHandSide)), $correctLeftHandSide) = 0 and _ 
 			   StringInStr($list[$I], $correctRightHandSide) <> 0) Then
 				$finalDir = $list[$I]
 				ExitLoop
@@ -2334,7 +2410,7 @@ Func LoadOldWindowState($bForceLoad = false)
 	if($oldPositionsValid = false) Then
 		;This should only happen when a window is resized and a person does a manual save.
 		;Even in this scenario I should be querying the person to try to prevent this state
-		Logger($EASSERT, "$oldPositionsValid = false", true)
+		AssertMsg("$oldPositionsValid = false", true, 0)
 		return false
 	EndIf
 	
@@ -2598,10 +2674,10 @@ Func StateMachine($msg)
 				EndIf
 			EndIf
 		
-		Case $msg = $readmeitem 
+		Case $msg = $projectitem 
 			If FileExists(@ProgramFilesDir & "\Internet Explorer\iexplore.exe") Then
 				;Run(@ProgramFilesDir & "\Internet Explorer\iexplore.exe http://wiki.razing.net")
-				_RunDOS("start http://wiki.razing.net/index.php/FootnoteReap")
+				_RunDOS("start http://footnotereap.googlecode.com")
 			EndIf
 		
 		Case $msg = $label5
@@ -2708,12 +2784,10 @@ endif
 SetLoggerIgnoreLevel($gLoggerIgnoreLevel, true)
 
 ;this has to happen early for all the functions to get the benefit of it.
-Local $sleepMod = OnOffOrError($gKeyName, $gSleepMultiplierRegSz)
-if($sleepMod <> -1) then 
-	$gSleepMultiplier = $sleepMod
-else 
-	RegWrite($gKeyName, $gSleepMultiplierRegSz, "REG_SZ", $gSleepMultiplier)
-endif
+
+InitializeOrReadRegistryEntry($gKeyName, $gSleepMultiplierRegSz, $gSleepMultiplier)
+InitializeOrReadRegistryEntry($gKeyName, $gWaitDelayRegSz, $gWaitDelay)
+Opt("WinWaitDelay", $gWaitDelay) 
 
 ;------------CSV data----------------
 Local $origsecs = _DateDiff('s', "2011/07/01 00:00:00", _NowCalc())
@@ -2790,7 +2864,7 @@ $verifybuttons = GuiCtrlCreateMenuItem("&Verify Buttons", $edit)
 ;$winmove = GuiCtrlCreateMenuItem("&Winmove test", $edit)
 
 $help = GuiCtrlCreateMenu("&Help")
-$readmeitem = GuiCtrlCreateMenuItem("View &Readme", $help)
+$projectitem = GuiCtrlCreateMenuItem("View &Project", $help)
 $aboutitem = GuiCtrlCreateMenuItem("&About", $help)
 
 WindowResizedOrMoved()
