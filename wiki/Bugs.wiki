@@ -1,6 +1,6 @@
 #labels Phase-Design,Featured
 == Bugs ==
-As of v0.0.1.0:
+As of v0.0.1.3:
   # Occasionally gets stuck during the main download loop. Due to:
     # <s>Send() pushing 'l' (now 'd') to the URL bar</s> - fixed v0.0.1.1
     # Possible infinite loop because of quirky directory names
