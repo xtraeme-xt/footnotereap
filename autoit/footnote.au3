@@ -84,6 +84,7 @@
 
 ;----------------- Global Definitions -----------------
 Const $version = "0.0.1.3"
+Const $buildnum = "17"
 
 Dim $answer = 0
 Global $gNT = 1
@@ -108,6 +109,7 @@ Global $gSaveImageDialogUp = false
 Global $gPaused = false
 Global $gRunning = false ;the program doesn't have to be executing the download functions so this is necessary
 Global $gBrowserActiveBeforeFootnoteReap = false
+Global $gSavedClipboard = false
 ;-------------------------------------
 
 Global $gDebug = true
@@ -117,6 +119,11 @@ Global $gSleepMultiplier = 1
 Global $gSleepMultiplierRegSz = "gSleepMultiplier"
 Global $gWaitDelay = 250	; this is the default: Opt("WinWaitDelay", 250)        ;250 milliseconds
 Global $gWaitDelayRegSz = "gWaitDelay"
+
+Global $gSendKeyDelay = 5
+Global $gSendKeyDelaySz = "gSendKeyDelay"
+Global $gSendKeyDownDelay = 5
+Global $gSendKeyDownDelaySz = "gSendKeyDownDelay"
 
 Global $gSavetoDirectory = ""
 Global $gSavetoDirectoryRegSz = "gSaveToDirectory"
@@ -228,6 +235,16 @@ Global $help, $projectitem, $aboutitem
 Global $initializebutton 
 ;-------End GUI elements-------------
 
+
+;---------Global Labels--------------
+Global $label_select_location = "Select location" ; possibly add: "for download" ?
+Global $label_select_location_for_download = "Select location for download"
+Global $label_save_as = "Save As"
+Global $label_confirm_save_as = "Confirm Save As"
+;--------Emd Global Labels--------------
+
+
+Global $gOriginalClipboard = ""
 Global $gCSVArray
 ;----------------End Global Definitions-----------------
 
@@ -261,6 +278,7 @@ EndFunc   ;==>OnOffOrError
 
 
 Func InitializeOrReadRegistryEntry($keyname, $regsz, ByRef $global, $type = "REG_SZ")	
+	Logger($ETRACE, "InitializeOrReadRegistryEntry(" & $keyname & "," & $regsz & "," & $global & "," & $type & ")", false)
 	Local $read = OnOffOrError($keyname, $regsz)
 	if($read <> -1) then 
 		$global = $read
@@ -346,6 +364,7 @@ Func Logger($code, $msg, $bMsgBox, $timeout = 0)
 	EndSelect
 EndFunc   ;==>Logger
 
+
 Global $gExceptionArray[1]
 Global Enum Step +1 $EADD, $EREMOVE
 Func SetLoggerIgnoreException($newArray, $operation)
@@ -404,6 +423,7 @@ Func SetLoggerIgnoreException($newArray, $operation)
 	;_ArrayDisplay($gExceptionArray, "after SetLoggerIgnoreException()")
 EndFunc
 
+
 Func RemoveAllLoggerExceptions()
 	Logger($ETRACE, "RemoveAllLoggerExceptions()", false)
 	if($gExceptionArray[0] = "") Then
@@ -414,6 +434,7 @@ Func RemoveAllLoggerExceptions()
 	;_ArrayDisplay($gExceptionArray, "after SetLoggerIgnoreException()")
 EndFunc
 
+
 Func IsLoggerCodeExempt($code)
 	if($gExceptionArray[0] = "") then return False
 	$max = UBound($gExceptionArray)-1
@@ -422,6 +443,7 @@ Func IsLoggerCodeExempt($code)
 	Next
 	return false
 EndFunc
+
 
 Global $gPushLevels[1]
 Global Enum Step +1 $ENOP, $EPUSH, $EPOP
@@ -481,10 +503,12 @@ Func SetLoggerIgnoreLevel($code, $squelching, $op=$ENOP, $override = false)
 	;ConsoleWrite($gDisableLoggerLevels & @CRLF)
 EndFunc   ;==>SetLoggerIgnoreLevel
 
+
 Func PopLoggerIgnoreLevel($squelching=false)
 	Logger($ETRACE, "PopLoggerIgnoreLevel(" & $squelching & ")", false)
 	SetLoggerIgnoreLevel($gDisableLoggerLevels, $squelching, $EPOP)
 EndFunc
+
 
 Func PushLoggerIgnoreLevel($code, $squelching)
 	Logger($ETRACE, "PushLoggerIgnoreLevel(" & $code & "," & $squelching & ")", false)
@@ -538,6 +562,12 @@ Func CleanupExit($code, $msg, $bMsgBox)
 			_ConsoleWrite("Internal Error Exit: " & $msg)
 	EndSelect
 	;if($gLoggerEnabled) then _Console_Free()
+	if($gSavedClipboard and StringCompare($gOriginalClipboard, "") <> 0) Then
+		Local $ret = MsgBox(4, "Restore Clipboard", "Would you like to restore the old clipboard data (below) before quitting?" & @CRLF & @CRLF & StringGetLenChars($gOriginalClipboard, 200), 60)
+		if($ret = 6 or $ret = -1) Then
+			ClipPut($gOriginalClipboard)
+		endif
+	endif
 	Exit($code)
 EndFunc   ;==>CleanupExit
 
@@ -1076,24 +1106,32 @@ EndFunc   ;==>MakeActive
 
 
 ;Add a parameter to specify sleep time for GetClip?
-Func GetClip(ByRef $clip, $sendCtrlC = false, $count = "")
+Func GetClip(ByRef $clip, $sendCtrlC = false, $stripCR = true, $count = "")
 	Logger($ETRACE, "GetClip()", false)
 	
 	;Santize and store old input
-	Local $oldclip = ""
 	if($sendCtrlC) then
-		$oldclip = ClipGet()
-		Logger($EVERBOSE, "$oldclip: " & $oldclip, false)
-		ClipPut("") ; May want to make sure we have something we can check for.
+		if(not $gSavedClipboard) Then
+			$gOriginalClipboard = ClipGet()
+			Logger($EVERBOSE, "$gOriginalClipboard: " & $gOriginalClipboard, false)
+			$gSavedClipboard = true
+		endif
+		if(ClipPut("") = 0) then  ; May want to make sure we have something we can check for.
+			Logger($EUNHANDLED, "ClipPut() failed to empty the clipboard", false)
+		endif
 		Send("{CTRLDOWN}")
-		Send("^c")
+		Send("c")
 		Send("{CTRLUP}")
 		Sleep(200 * $gSleepMultiplier) ; give it some time to grab it as the transfer might take a moment
 	endif
 	
-	$clip = ClipGet()
+	$clip = _Iif($stripCR, StringStripCR(ClipGet()), ClipGet()) 
 	$ret = @error
-	ConsoleWrite("THIS IS THE TEMPCLIP: " & $clip & @CRLF)
+	
+	
+	if($gDisableLoggerLevels < $EUNHANDLED) then 
+		ConsoleWrite("THIS IS THE TEMPCLIP: " & $clip & @CRLF)
+	endif
 	
 	if($ret <> 0) then
 		if($ret = 1) then
@@ -1108,7 +1146,9 @@ Func GetClip(ByRef $clip, $sendCtrlC = false, $count = "")
 	endif
 	
 	;Retore the original clip
-	if($sendCtrlC) then ClipPut($oldclip)
+	;if($sendCtrlC) then 
+	;	ClipPut($oldclip)
+	;	if(StringCompare(ClipGet(), $oldclip) <> 0) Then
 	
 	return $ret
 EndFunc   ;==>GetClip
@@ -1132,13 +1172,13 @@ Func GetCurrentURL(ByRef $clip)
 		;simplicity I've decided to just use Internet Explorer. For more information also see:
 		;https://www.ibm.com/developerworks/opensource/library/os-78414-firefox-flash/
 		
-		Send("!d", 0) ; Grab the URL off the clipboard
+		Send("{ALTDOWN}d{ALTUP}", 0) ; Grab the URL off the clipboard
 		Sleep(150 * $gSleepMultiplier)
 		;Sleep(10000)
-		$err = GetClip($tempClip, true, $count)
+		$err = GetClip($tempClip, true, true, $count)
 		;Todo: add in a comment to the user to tell them to click in the URL bar?
 		if(StringCompare($tempClip, "d") = 0) Then
-			Send("^z", 0)
+			Send("{CTRLDOWN}z{CTRLUP}", 0)
 			sleep(300)
 			$tempClip = ""
 		EndIf
@@ -1151,6 +1191,7 @@ Func GetCurrentURL(ByRef $clip)
 	
 	Logger($EVERBOSE, "$clip: " & $clip, false)
 EndFunc   ;==>GetCurrentURL
+
 
 ;grep string for root domain in url bar. If it's footnote.com then everything's fine.
 Func ValidFootnotePage($testString = "")
@@ -1408,6 +1449,7 @@ Func StartResumeInit()
 	Else
 		;Xtraeme: This is pretty much defunct code ... I probably should remove it at some point.
 		if($gInitialized And WindowResizedOrMoved()) Then
+			Logger($EUNHANDLED, "$gInitialized And WindowResizedOrMoved() -- do something?", false)
 			;REPRO: delete registry, Initialize, resize window, click Start/Resume
 			;		Perhaps change the notification to, "The window has changed. Do you want to restore the old window size and position? Clicking 'Yes' will reload the old positions."
 			#cs
@@ -1494,6 +1536,7 @@ Func MonthNameToNumber($monthName, $prependZero = false)
 	PopLoggerIgnoreLevel()
 EndFunc   ;==>MonthNameToNumber
 
+
 Global $gDynamicCreateNewDirectory = true
 Func GetDirectoryNameFromURL($url)
 	Logger($ETRACE, "GetDirectoryNameFromURL(" & $url & ")", false)
@@ -1509,7 +1552,14 @@ Func GetDirectoryNameFromURL($url)
 	$arraySearch = _CSVSearch($gCSVArray, $id, "|")
 	;_ArrayDisplay($arraySearch, 'Your file with "|" as delimiter')
 	if($arraySearch <> 0 And $arraySearch[0][0] <> 0) Then
-		$array = StringSplit($arraySearch[1][2], "|", 1)
+		Local $index = 1
+		for $I = 1 to $arraySearch[0][0]
+			Dim $larray = StringSplit($arraySearch[$I][2], "|", 1)
+			if($larray[1] = $id) Then
+				$array = $larray
+				ExitLoop
+			EndIf
+		next
 	EndIf
 	
 	Logger($EUSER, "Found new document id#: " & $id, false)
@@ -1546,7 +1596,7 @@ Func GetDirectoryNameFromURL($url)
 			$monthseason = $monthArray[0]
 			if($monthseason > 12) Then
 				$seasonArray = StringRegExp($bodyText, "Month:\s*(\w+)", 1)
-				Assert(@error > 0, "@error > 0", "month season number ($monthseason) > 12, but season is undefined")
+				Assert(@error = 0, "@error = 0", "month season number ($monthseason) > 12, but season is undefined")
 				$monthseason = $seasonArray[0]
 				Logger($EVERBOSE, "season name is: " & $monthseason, false)
 			endif
@@ -1562,9 +1612,9 @@ Func GetDirectoryNameFromURL($url)
 		;ConsoleWrite($incident & @CRLF)
 		if($incident <> "") Then
 			$location = $location & " (#" & $incident & ")"
-			$location = StringRegExpReplace($location, "&", "and")
-			$location = StringRegExpReplace($location, '"', "''")
 		endif
+		$location = StringRegExpReplace($location, "&", "and")
+		$location = StringRegExpReplace($location, '"', "''")
 		;SetError(1)
 	endif
 	
@@ -1588,13 +1638,23 @@ Func GetDirectoryNameFromURL($url)
 EndFunc
 
 
-Func CreateNewDirectory()
+Func CreateNewDirectory($name = "")
 	Logger($ETRACE, "CreateNewDirectory()", false)
-	Local $dir = GetDirectoryNameFromURL($gCurrentURL)
-	Logger($EUSER, "Creating directory: " & $dir, false)
-
-	if(Not FileExists($dir)) Then $ret = DirCreate($dir)
+	Local $dir = ""
+	
+	if(StringCompare($name, "") = 0) then
+		$dir = GetDirectoryNameFromURL($gCurrentURL)
+	Else
+		$dir = $name
+	EndIf
+	
+	if(Not FileExists($dir)) Then 
+		Logger($EUSER, "Creating directory: " & $dir, false)
+		$ret = DirCreate($dir)
+	EndIf
+	
 	if(FileExists($dir)) Then
+		Logger($EUSERVERBOSE, "Committing $gCurrentSavetoDirectory to registry...", false)
 		$gCurrentSavetoDirectory = $dir
 		RegWrite($gKeyName, $gCurrentSavetoDirectoryRegSz, "REG_SZ", $gCurrentSavetoDirectory)
 	EndIf
@@ -1618,16 +1678,63 @@ Func DirectoryManager()
 EndFunc   ;==>DirectoryManager
 
 
+Func IsSameAsClip($text, $selectKeyCombo="")
+	Logger($ETRACE, "IsSameAsClip(" & $text & ", " & $selectKeyCombo & ")", false)
+	
+	Local $tempClip = ""
+	Local $counter = 3		;we try 3 times before we fail out
+	
+	if(StringCompare($selectKeyCombo, "") <> 0) Then
+		Send($selectKeyCombo, 0)
+	EndIf
+	
+	while(GetClip($tempClip, true) > 0 and $counter <> 0)
+		$counter -= 1
+	wend
+
+	if(StringCompare($text, $tempClip) = 0 and $counter <> 0) Then
+		return True
+	EndIf
+	
+	return False
+EndFunc
+
+
 Func SetSaveDialogDirectory($dir, $clip)
 	; Issue 6: 	Filename/Path gets prematurely shortened in the Save As dialog
 	Logger($ETRACE, "SetSaveDialogDirectory(" & $dir & ", " & $clip & ")", false)
-	Send($dir, 1)
+	Local $tempClip = ""
+	Local Const $timeoutUpperBound = 3
+	Local $timeout = $timeoutUpperBound
+	
+	Do
+		Send($dir, 1)
+		Sleep(300 * $gSleepMultiplier)
+		if($timeout < $timeoutUpperBound-1) then
+			Logger($EUSERVERBOSE, "The application may have lost focus. Try clicking inside 'File name:' textbox", false)
+		endif
+		$timeout -= 1
+	until(IsSameAsClip($dir, "{END}{SHIFTDOWN}{HOME}{SHIFTUP}") or $timeout = 0)
+	
+	if($timeout = 0) Then
+		Logger($EUNHANDLED, "SetSaveDialogDirectory(1676), Directory possibly not set correctly:" & $dir, 0)
+	EndIf
+	$timeout = $timeoutUpperBound
+	
 	Send("{ENTER}", 0)
-	Sleep(500 * $gSleepMultiplier)
-	if(WinExists("Select location for download")) Then
-		;Send("^a",0)
-		Send($clip, 1)
-		Sleep(500 * $gSleepMultiplier)
+	Sleep(1000 * $gSleepMultiplier)
+	if(WinExists($label_select_location)) then ; Select location for download")) Then
+		while(Not IsSameAsClip($clip, "{END}{SHIFTDOWN}{HOME}{SHIFTUP}") and $timeout <> 0)
+			Send($clip, 1)
+			Sleep(500 * $gSleepMultiplier)
+			if($timeout < $timeoutUpperBound-1) then
+				Logger($EUSERVERBOSE, "The application may have lost focus. Try clicking inside 'File name:' textbox", false)
+			endif
+			$timeout -= 1
+		wend	
+		if($timeout = 0) Then
+			Logger($EUNHANDLED, "SetSaveDialogDirectory(1689), Filename possibly not set correctly:" & $clip, 0)
+		endif
 	EndIf
 	;Logger($EUSERVERBOSE, "leaving SetSaveDialogDirectory(" & $dir & ", " & $clip & ")", false)
 EndFunc
@@ -1646,7 +1753,7 @@ Func StringRegExpMatch($origstring, $pattern, $flag = 0, $errorstring = -1, $off
 	Local $resultstring = ""
 	$returnArray  = StringRegExp($origstring, $pattern, $flag, $offset)
 	if(@error > 0) then 
-		Logger($EUSERVERBOSE, "err: " & @error & ", using: " & $errorstring, false, 60)
+		Logger($EUNHANDLED, "err: " & @error & ", using: " & $errorstring, false, 60)
 		if($errorstring <> -1) Then
 			$resultstring  = $errorstring
 		endif
@@ -1657,6 +1764,7 @@ Func StringRegExpMatch($origstring, $pattern, $flag = 0, $errorstring = -1, $off
 EndFunc
 
 
+Global Enum Step +1 $ENODOC_NOPAGE_ERROR = 0, $ENEWPAGE, $ENEWDOC, $ESKIPPED
 ;Global $testOnce = true
 Global $gDirectoryNotSet = false
 Func StartDownloadImage()
@@ -1670,7 +1778,7 @@ Func StartDownloadImage()
 	Local $currentFileSize = 0
 	Local $origsecs = 0
 	Local $count = 0
-	Local $retCode = false
+	Local $retCode = $ENODOC_NOPAGE_ERROR 
 	Local $newurl = ""
 	Local $page1 = "Page 1.jpg"
 	
@@ -1691,7 +1799,7 @@ Func StartDownloadImage()
 	Sleep(1000 * $gSleepMultiplier)
 	
 	;Logger($EUSERVERBOSE, Not WinExists("Select location"), true)
-	while (Not WinExists("Select location") and Not WinExists("Save As")) ; or $testOnce = true) 
+	while (Not WinExists($label_select_location) and Not WinExists($label_save_as)) ; or $testOnce = true) 
 		;$testOnce = false
 		;To handle the: 
 		;	"Oops, we couldn't load information about this image"
@@ -1746,16 +1854,15 @@ Func StartDownloadImage()
 		;if(@ERROR = 1) then
 		;EndIf
 		SetSaveDialogDirectory($dir, $clip)
-		$retCode = 2
+		$retCode = $ENEWDOC
 	elseif($gStartResumeSessionPageCount = 0 And StringCompare($clip, $page1) <> 0) Then
 		;Need to make sure we have a sane directory
 		
-		;TODO: In what case should I use this? $dir = $gCurrentSavetoDirectory 
+		Local $dir = GetDirectoryNameFromURL($gCurrentURL)
+		Local $list = _FileListToArray($gSavetoDirectory)
+		Local $index = 0
+		Dim $finalDir[1] = [""]
 		
-		$dir = GetDirectoryNameFromURL($gCurrentURL)
-		$list = _FileListToArray($gSavetoDirectory)
-		$finalDir = ""
-
 
 		;Logger($EUSERVERBOSE, $dir, true)
 		$partiallyCorrectName = StringRegExpMatch($dir, "(?m)\\([\d{4,}|xxxx].*)$", 1)
@@ -1766,35 +1873,124 @@ Func StartDownloadImage()
 		;ConsoleWrite($correctLeftHandSide & @CRLF)
 		
 		;For nonstandard seasons ...
-		if(Not IsNumber(Number(StringRight($correctLeftHandSide, 1)))) Then
-			$correctLeftHandSide = StringRegExpMatch($partiallyCorrectName, "(?m)([\d{4,}|xxxx].*)\s+\-.*$", 1)
+		if(Not Number(StringRight($correctLeftHandSide, 1))) Then
+			$correctLeftHandSide = StringRegExpMatch($partiallyCorrectName, "(?m)([\d{4,}|xxxx]\.\w+)\s*\-\s+\d+\s+\-\s+(.*)$", 1)
+			Logger($EUSERVERBOSE, "season is: $correctLeftHandSide = " & $correctLeftHandSide, false)
 			Assert($correctLeftHandSide <> "", "$correctLeftHandSide <> """, true)
 		endif
 
 		$correctRightHandSide = StringRegExpMatch($partiallyCorrectName, "(?m)^.*\-\s+\d+\s+\-\s+(.*)$", 1)
 		;Logger($EUSERVERBOSE, $correctRightHandSide, true)
 		
-		ConsoleWrite($partiallyCorrectName & @CRLF)
-		ConsoleWrite($correctLeftHandSide & @CRLF)
-		ConsoleWrite($correctRightHandSide & @CRLF)
+		;ConsoleWrite($partiallyCorrectName & @CRLF)
+		;ConsoleWrite($correctLeftHandSide & @CRLF)
+		;ConsoleWrite($correctRightHandSide & @CRLF)
 		
+		$currentSaveToDirName = StringRegExpMatch($gCurrentSavetoDirectory, "(?m)\\([\d{4,}|xxxx].*)$", 1)
+		
+		;Check to see if the gCurrentSaveToDirectory possibly matches our partially corect name.
+		;If it doesn't we don't consider the gCurrentSaveToDirectory as valid. 
+		;TODO: This will have to be changed when I add automation.
+		if(StringCompare(StringLeft($currentSaveToDirName, StringLen($correctLeftHandSide)), $correctLeftHandSide) = 0 and _ 
+			   StringInStr($currentSaveToDirName, $correctRightHandSide) <> 0) Then
+			   $finalDir[0] = $currentSaveToDirName
+			   ;ConsoleWrite("finalDir[0]: " & $finalDir[0] & @CRLF)
+		endif
+
 		for $I = 0 to UBound($list)-1
 			if(StringCompare(StringLeft($list[$I], StringLen($correctLeftHandSide)), $correctLeftHandSide) = 0 and _ 
 			   StringInStr($list[$I], $correctRightHandSide) <> 0) Then
-				$finalDir = $list[$I]
-				ExitLoop
+				;if(StringCompare($finalDir[$index], "") <> 0) then 
+					;We iterate over the entire list to make sure there isn't a second or third match
+					_ArrayAdd($finalDir, $list[$I])
+					$index += 1
+					Logger($EUSERVERBOSE, "Found possible directory match: " & $finalDir[$index], false)
+					;ExitLoop
+				;endif
 			endif
 		next
-		if(StringCompare($finalDir, "") <> 0) Then
-			;We found our directory
-			$dir = $gSavetoDirectory & "\" & $finalDir
+		
+		Local $breg = _Iif(StringCompare($finalDir[0], "") <> 0, true, false)
+		
+		if($index > 1) Then
+			;handle the case of numerous possible directories
+			Local $I = 1
+			if($breg) Then
+				for $I = 1 to UBound($finalDir)-1
+					if(StringCompare($finalDir[0], $finalDir[$I]) = 0) Then
+						;We found our directory
+						$dir = $gSavetoDirectory & "\" & $finalDir[$I]
+						ExitLoop
+					endif
+				Next
+				if($I = UBound($finalDir)) Then
+					;we didn't find a matching directory
+					Logger($EUSERVERBOSE, "Several similar directories were found, but none match the registry: " & $gCurrentSavetoDirectory, false)
+					Logger($EUSERVERBOSE, "Recreating ...", false)
+					$dir = CreateNewDirectory($gSavetoDirectory & "\" & $finalDir[0])
+				endif
+			Else
+				;Give the person the option to choose?
+				Local $selection = ""
+				MsgBox(48, "Select An Entry", "Since several directories were found that could correspond to:" & @CRLF & @CRLF & $partiallyCorrectName & @CRLF & @CRLF & "On the next screen please select one of the entries and click the button that says 'Copy Selected' and close the dialog. More often than not you'll want to select the directory that has the most current modification date.")
+				_RunDOS("start " & $gSavetoDirectory)
+				Do
+					_ArrayDisplay($finalDir, "List of Known Similar Directories", -1, 0, "", "|", "Index|Known Directories ([0] = last known good registry entry)")
+					GetClip($selection)
+					$selection = StringStripCR(StringRegExpMatch($selection, "(?m)\|([\d{4,}|xxxx].*)\s*$", 1))
+				until(StringCompare($selection, "") <> 0)
+				;AssertMsg($selection)
+				$dir = CreateNewDirectory($gSavetoDirectory & "\" & $selection)
+				WinActivate($label_select_location)
+			endif
+			
+		elseif($breg Or $index = 1) then
+			;handle the case of previous registry entry match and/or a directory match
+			;AssertMsg("number: " & $index)
+			;_ArrayDisplay($finalDir)
+			
+			;If the registry and directory are the same ...
+			if(StringCompare($finalDir[0], _Iif($index = 1, $finalDir[$index], "fail")) = 0) Then
+				;This is what should normally happen ...
+				Logger($EUSERVERBOSE, "Everything looks as it should, the registry and directory structure both match.", false)
+				$dir = $gSavetoDirectory & "\" & $finalDir[1]
+			
+			;or we have no registry but we do have a directory then ...
+			elseif(not $breg and $index = 1) Then
+				Logger($EUSERVERBOSE, "The registry is missing, but a directory matches.", false)
+				$dir = $gSavetoDirectory & "\" & $finalDir[1]
+			
+			;If the registry and directory both exist but they're different ...
+			elseif ($index = 1 and $breg and StringCompare($finalDir[0], _Iif($index = 1, $finalDir[$index], "fail")) <> 0) Then
+				Logger($EUSERVERBOSE, "The registry doesn't match the corresponding directory ..." & $finalDir[0], false)
+				$dir = $gSavetoDirectory & "\" & $finalDir[0]
+				if(FileExists($dir)) then
+					Logger($EUSERVERBOSE, "Warning: The hard-drive may be failing or something was changed midrun. Please check your data.", false)
+				Else
+					Logger($EUSERVERBOSE, "Did you rename the directory?", false)
+				endif
+				Logger($EUSERVERBOSE, "Defaulting to the registry ...", false)
+				
+			Else
+				;We have to choose, so always give preference to the registry
+				;this also handles the case of index = 0 and StringCompare($finalDir[0], "") <> 0
+				;meaning the case of no directories but a previous registry entry
+				$dir = $gSavetoDirectory & "\" & $finalDir[0]
+				Logger($EUSERVERBOSE, "The last known working directory is missing ... " & $gCurrentSavetoDirectory, false)
+				Logger($EUSERVERBOSE, "Recreating ...", false)
+			endif
+			$dir = CreateNewDirectory($dir)
 		Else
+			;no registry data and no known directories starting at a random url
 			;If all else fails lets just use the best known guess for the last directory
-			if(MsgBox(2, "Warning...", "Starting from a random URL that isn't at 'Page 1.jpg' may result in downloading duplicate files due to inconsistency in directory names. Ignore to proceed") <> 5) Then
-				CleanupExit($EUSER, "Exiting...", false)
+			if(MsgBox(2, "Warning...", "Starting from a random URL that isn't at 'Page 1.jpg' may result in downloading duplicate files due to inconsistency in directory names." & @CRLF & @CRLF & "'Ignore' to proceed or 'Abort' and navigate to Page 1.") <> 5) Then
+				TogglePause()
+				SetError(2)
+				return $ENODOC_NOPAGE_ERROR 
 			endif
 			$dir = CreateNewDirectory()
 		endif
+
 		
 		Logger($EUSERVERBOSE, "Using directory name: " & $dir, false)
 		if(StringCompare($dir, $gCurrentSavetoDirectory) <> 0 and FileExists($dir)) Then
@@ -1814,9 +2010,15 @@ Func StartDownloadImage()
 	Local $hitConfirmSaveAs = false
 	$count = 0
 	do
-		WinActivate("Select location")
+		WinActivate($label_select_location)
 		if($count > 2) Then
-			Send($clip, 1)
+			;Send($clip, 1)
+			;Sometimes the directory doesn't "reset" and revert to the filename. When this happens 
+			;we navigate up to the parent directory and then reset the save path($dir) and the 
+			;page name($clip)
+			Logger($EUSERVERBOSE, "Save Dialog is rejecting: " & $dir & ". Navigating to parent directory and back again.", false)
+			SetSaveDialogDirectory("..", "")
+			SetSaveDialogDirectory($dir, $clip)
 			Sleep(1000 * $gSleepMultiplier)
 		endif
 		$count += 1
@@ -1826,18 +2028,18 @@ Func StartDownloadImage()
 		;creating a few "text" loop patterns will help me locate where we're getting stuck
 		Logger($EINFINITELOOPDBG, "st", false) 
 		;TODO: Add generic routine for breaking out if this fails?
-		if(WinExists("Confirm Save As")) then 
-			WinActivate("Confirm Save As")
+		if(WinExists($label_confirm_save_as)) then 
+			WinActivate($label_confirm_save_as)
 			$gDirectoryNotSet = True
 			Send("{Enter}", 0)
 			Sleep(150 * $gSleepMultiplier)
 			Send("{tab}{tab}{tab}{enter}", 0)
 			Sleep(100 * $gSleepMultiplier)
 			Logger($EUSER, "'" & $clip & "' already exists in " & $gCurrentSavetoDirectory & ". Skipping and going to the next...", false)
-			if($retCode <> 2) then $retCode = 3
+			if($retCode <> $ENEWDOC) then $retCode = $ESKIPPED
 			$hitConfirmSaveAs = true
 		EndIf
-	Until (NOT WinExists("Select location for download"))
+	Until (NOT WinExists($label_select_location)) ;"Select location for download"))
 	
 	if($hitConfirmSaveAs = false) then 	;Not WinExists("Confirm Save As")
 		;TODO: Need to handle collisions. Particularly the case where I don't get to set the directory
@@ -1873,7 +2075,7 @@ Func StartDownloadImage()
 			;ConsoleWrite("currentFileSize: " & $currentFileSize & ", lastFileSize: " & $lastFileSize & @CRLF)
 		Until($lastFileSize = $currentFileSize)
 		Logger($EUSER, "Downloading '" & $clip & "' took " & _DateDiff('s', "2011/07/01 00:00:00", _NowCalc()) - $origsecs & " seconds to complete", false)
-		if($retCode <> 2) then $retCode = 1
+		if($retCode <> $ENEWDOC) then $retCode = $ENEWPAGE
 	EndIf
 	Sleep(100 * $gSleepMultiplier)
 	MouseClick("left", $gNextButton[0], $gNextButton[1])
@@ -1903,7 +2105,6 @@ Func StartResume()
 	$gPaused = false
 	GuiCtrlSetState($initializebutton, $GUI_HIDE)
 	
-
 	$ret = StartResumeInit()
 	;Impl main loop this needs to:
 	; 	1. DONE - Always make sure we have a Process open (in case FF crashes)
@@ -1913,11 +2114,12 @@ Func StartResume()
 
 	if($gRunning = false And $gInitialized = true And $gPositionsValid = true) Then
 		$gRunning = true
+		
 		SetLoggerIgnoreLevel($ETRACE, true)
 		$gStartResumeSessionPageCount = 0
 		$gStartResumeSessionDocCount = 0
 		
-		while($gPaused <> true)
+		while(NOT $gPaused)
 			$msg = GuiGetMsg()
 			$ret = StateMachine($msg)
 			if($ret <> 0) then
@@ -1933,6 +2135,9 @@ Func StartResume()
 				Case 0
 					if(@error = 1) Then
 						;Since we didn't advance the page it should try again ... Should I have a timeout here too?
+					elseif(@error = 2) then
+						;This means we were at a random url without the page 1 id. So we just want to pause
+						;The user already gets a notification so is there anything else we should do here?
 					endif
 			EndSwitch
 			
@@ -2071,8 +2276,8 @@ Func IsSaveImageDialogUp($automated = false, $count = 0, $timeout = 60)
 					;click and see if we get a dialog. If so it was up. Now lets reenable it.
 					MouseClick("left", $gEntireImageButton[0], $gEntireImageButton[1])
 					Sleep(600 * $gSleepMultiplier)
-					If(WinExists("Select location for download") = true Or _
-					   WinExists("Save As") = true ) Then ;by www.fold3.com
+					If(WinExists($label_select_location) = true Or _    ;"Select location for download") = true Or _
+					   WinExists($label_save_as) = true ) Then 			;by www.fold3.com
 						Send("{Tab}{Tab}{Tab}{ENTER}", 0)
 						Sleep(100 * $gSleepMultiplier)
 						$gSaveImageDialogUp = false
@@ -2643,7 +2848,7 @@ Func StateMachine($msg)
 			$lab4h = $lab3h + $spacer
 			$label4 = GuiCtrlCreateLabel("Website:", 5, $lab4h)
 			$lab45h = $lab4h + $spacer
-			$label45 = GuiCtrlCreateLabel("Version:        " & $version, 5, $lab45h)
+			$label45 = GuiCtrlCreateLabel("Version:        " & $version & ", build " & $buildnum, 5, $lab45h)
 
 			;GUICtrlSetColor($label, 0xff0000)
 			;GUICtrlSetFont($label2, 9, 400, 4)
@@ -2764,6 +2969,7 @@ Opt("WinTitleMatchMode", 2)
 
 WinActivate("cmd.exe")
 Logger($EUSER, "FootnoteReap ver: " & $version, false)
+Logger($EUSER, "Build number: " & $buildnum, false)
 
 $debug = OnOffOrError($gKeyName, $gDebugRegSz)
 if($debug = "-1") then 
@@ -2785,9 +2991,14 @@ SetLoggerIgnoreLevel($gLoggerIgnoreLevel, true)
 
 ;this has to happen early for all the functions to get the benefit of it.
 
-InitializeOrReadRegistryEntry($gKeyName, $gSleepMultiplierRegSz, $gSleepMultiplier)
-InitializeOrReadRegistryEntry($gKeyName, $gWaitDelayRegSz, $gWaitDelay)
+InitializeOrReadRegistryEntry($gKeyName, $gSleepMultiplierRegSz, $gSleepMultiplier, "REG_DWORD")
+InitializeOrReadRegistryEntry($gKeyName, $gWaitDelayRegSz, $gWaitDelay, "REG_DWORD")
+InitializeOrReadRegistryEntry($gKeyName, $gSendKeyDelaySz, $gSendKeyDelay, "REG_DWORD")
+InitializeOrReadRegistryEntry($gKeyName, $gSendKeyDownDelaySz, $gSendKeyDownDelay, "REG_DWORD")
+
 Opt("WinWaitDelay", $gWaitDelay) 
+Opt("SendKeyDelay", $gSendKeyDelay)
+Opt("SendKeyDownDelay", $gSendKeyDownDelay) 
 
 ;------------CSV data----------------
 Local $origsecs = _DateDiff('s', "2011/07/01 00:00:00", _NowCalc())
