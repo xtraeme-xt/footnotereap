@@ -83,8 +83,8 @@
 #include <ButtonConstants.au3>
 
 ;----------------- Global Definitions -----------------
-Const $version = "0.0.1.3"
-Const $buildnum = "17"
+Const $version = "0.0.1.4"
+Const $buildnum = "1 (0.0.1.3 r17)"
 
 Dim $answer = 0
 Global $gNT = 1
