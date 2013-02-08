@@ -1,9 +1,9 @@
 #labels Phase-Support,Phase-Deploy,Featured
 ==Console Output and Logging Features==
 
-1. *Q:* I downloaded the FootnoteReapDbg.lnk but I couldn't get it to work.  I'm not sure what sort of file it is or how to get it to do anything.  
+1. *Q:* I downloaded the FootnoteReapDbg.lnk but I couldn't get it to work.  I am not sure what sort of file it is or how to get it to do anything.  
 
-  <b>A:</b> The FootnoteReapDbg.lnk is the same type of file that exists for all of the shortcuts in the start menu. You can think of it like a one line batch or cmd script. If you ever want to see the command that it's executing. Right click on the lnk file, select properties, and take a look at the target field. In this case it should read:
+  <b>A:</b> The FootnoteReapDbg.lnk is the same type of file that exists for all of the shortcuts in the start menu. You can think of it like a one line batch or cmd script. If you ever want to see the command it is executing. Right click on the lnk file, select properties, and take a look at the target field. In this case it should read:
 
   `%COMSPEC% /E:ON /V:ON /Q /C ".\scripts\footnotedbg.bat"`
 
@@ -21,11 +21,11 @@
 
   At this point the text should be on the clipboard. Now in an email or a document you can paste the contents using the normal keyboard shortcut "CTRL+V" or by clicking "Edit → Paste".
 
-  I usually modify the command window to have a buffer with a height of 9999. This way you can scroll up further.
+  I usually modify the command window to have a buffer with a height of 9999. This way I can scroll up further.
 
    http://s6.postimage.org/vyqspfzb5/hdhegajb.png
 
 
 3. *Q:* After running the Reaper for about 30 minutes, I exited the Reaper but I don't know where the log file is. Is it OK if I just give you a copy paste of the last few lines?
 
-  <b>A:</b> I'd prefer it at all possible to have the entire log over a cut and paste. As a quick test, grab and unzip the [http://code.google.com/p/footnotereap/downloads/list latest build]. After it's done inflating run FootnoteReapDbg. Once the application has run for a second or two quit out of the program. Then check in the `log` folder. The name should look something like `Sun 02-12-2012_13.01.21.76_footnotereap_log`. If the log has a non-zero  size everything is working. In the event you're seeing something different. Please search the [http://code.google.com/p/footnotereap/issues/list issue list]. 
+  <b>A:</b> I'd prefer it at all possible to have the entire log over a cut and paste. As a quick test, grab and unzip the [http://code.google.com/p/footnotereap/downloads/list latest build]. After it is done inflating run FootnoteReapDbg. Once the application has run for a second or two quit out of the program. Then check in the `log` folder. The name should look something like `Sun 02-12-2012_13.01.21.76_footnotereap_log`. If the log has a non-zero  size everything is working. In the event you are seeing something different. Please search the [http://code.google.com/p/footnotereap/issues/list issue list]. 
