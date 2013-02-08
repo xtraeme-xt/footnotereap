@@ -11,7 +11,7 @@
 
 <hr>
 
-Head = [http://code.google.com/p/footnotereap/downloads/detail?name=FootnoteReap_v0.0.1.4.zip v0.0.1.4] (2013-02-08)
+Head = [http://code.google.com/p/footnotereap/downloads/detail?name=FootnoteReap_v0.0.1.4%20%28v2%29.zip v0.0.1.4] (2013-02-08)
   * Numerous modifications to attempt to solve issue 6, issue 14, and issue 18. (see r73 2.E)
   * On program restart, improved capacity to check whether the current URL is a part of the last batch of downloaded files, a part of a previous batch of downloaded files, or if the person is starting from a new URL. So, in affect, footnotereap more tightly pairs the current URL with the correct directory so it doesn't overwrite old data or miss new data. (see r73 2.F and 2.D)
   * Minor bug fixes (directory partial match issue - r73 2.C, cleaning text on clipboard - r73 2.A, and more)
