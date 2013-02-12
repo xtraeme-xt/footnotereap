@@ -1,9 +1,11 @@
 ;
-; Download NAA.gov images
-; http://code.google.com/p/download-naa-gov/
-; To use navigate to naa.gov, find a document with a digital file. The url will contain: 
-;   http://recordsearch.naa.gov.au/scripts/Imagine.asp
-; On this page hit F9 over the next page button (it looks like an arrow ... ->) . 
+; Scribd Snagger
+; http://code.google.com/p/(not uploaded to its own project yet). 
+; For now see: http://code.google.com/p/footnotereap/source/browse/trunk/autoit/scribddown.au3
+;
+; To use navigate to scribd.com, The url will contain: 
+;   www.scribd.com/doc/########/
+; On this page hit F9 over the "text box" where it shows 'X of YY'
 ; Then either hit F10 or click Command->start to download
 ;
 
@@ -146,8 +148,6 @@ Func StateMachine($msg)
 
 			$gButton = GUICtrlCreateButton("i", $width - 15, 5, 12, 12, BitOr($BS_BITMAP, $BS_DEFPUSHBUTTON))
 			GuiCtrlSetImage($gButton, $gCWD & "\left.bmp")
-			;GUISetState(@SW_SHOW, $gButton)
-			;Msgbox(0,"The Ultimate Collection","Created by Xtraeme." & @LF & "Contact: xthaus@yahoo.com" & @LF & "Website: http://wiki.razing.net")
 			
 
 		Case $msg = $label6
@@ -161,7 +161,7 @@ Func StateMachine($msg)
 		Case $msg = $readmeitem 
 			If FileExists(@ProgramFilesDir & "\Internet Explorer\iexplore.exe") Then
 				;Run(@ProgramFilesDir & "\Internet Explorer\iexplore.exe http://wiki.razing.net")
-				_RunDOS("start http://code.google.com/p/download-naa-gov/")
+				_RunDOS("start http://code.google.com/p/footnotereap/source/browse/trunk/autoit/scribddown.au3")
 			EndIf
 		
 		Case $msg = $label5
@@ -284,7 +284,7 @@ Func Start()
 	If(NOT ($gCoords <> $empty AND _
 		$gCoords[0] <> 0 AND _
 		$gCoords[1] <> 0)) Then
-		  Logger($EUSER, "Please move the mouse cursor so it's placed over the textbox on the Scribd interface, where it shows 'X of YY' and hit F9.", true)
+		  Logger($EUSER, "Please place the mouse cursor over the textbox on the Scribd interface where it shows 'X of YY', and hit F9.", true)
 		  Return
 	EndIf
 
@@ -292,8 +292,7 @@ Func Start()
 			$gCoords <> $empty AND _ 
 			$gCoords[0] <> 0 AND _
 			$gCoords[1] <> 0 AND _
-			$num <= $maxnum) ; -1 AND $num <> ""))
-		;sleep(3000)
+			$num <= $maxnum)
 		
 		$num = GUICtrlRead($gui_startnum)
 		
@@ -306,7 +305,7 @@ Func Start()
 		Sleep(3000)
 		
 		$count = 0
-		$lastxrand = $gCoords[0] 						;-Random(5,20)
+		$lastxrand = $gCoords[0]
 		$lastyrand = @DesktopHeight-100
 		MouseMove($lastxrand, $lastyrand)
 		
@@ -322,7 +321,7 @@ Func Start()
 				$curxrand = $lastxrand-Random(10,30)
 				$curyrand = $lastyrand-Random(10,100)
 				
-				MouseMove($curxrand, $curyrand) ;$gCoords[1]+
+				MouseMove($curxrand, $curyrand)
 				
 				$lastxrand = $curxrand
 				$lastyrand = $curyrand
@@ -358,10 +357,6 @@ Func Start()
 		$num = $num+1
 		ConsoleWrite($num & " -- num")
 		GUICtrlSetData($gui_startnum, $num)
-		;MouseMove($gCoords[0], $gCoords[1])
-		;MouseClick("left")
-		;MouseMove($gCoords[0]+44, $gCoords[1])
-		;MouseClick("left")
 	WEnd
 	Logger($EUSERVERBOSE, "Exitting Execution...", false)
 EndFunc
@@ -400,8 +395,7 @@ Func GetClip(ByRef $clip, $sendCtrlC = false, $count = "")
 		Logger($EVERBOSE, "$oldclip: " & $oldclip, false)
 		ClipPut("") ; May want to make sure we have something we can check for.
 		Sleep(100)
-		Send("^c")
-		;Send("{CTRLUP}{CTRLDOWN}")
+		Send("^c")  ; Sometimes the CTRL key gets stuck. Maybe execute: Send("{CTRLUP}{CTRLDOWN}")
 		Sleep(200 * $gSleepMultiplier) ; give it some time to grab it as the transfer might take a moment
 	endif
 	
