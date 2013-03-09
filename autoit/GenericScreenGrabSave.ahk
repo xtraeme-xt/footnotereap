@@ -2,16 +2,18 @@
 * Generic Screen Grab and Save (GSGS) Auto Hot Key script
 * Note: requires the "AppTitle" application to accept "Page downs" to advance to the next segment of content
 *
-* Instructions: 
-* Change lines 37-41 to reflect:
+* Instructions:
+* Make sure you have IrfanView installed and change line 54 to the correct path for the executable. 
+*
+* Change lines 39-47 to reflect:
 *
 * DocTitle = The name of the directory where you want to save the exported images
 * AppTitle = The text in the title area of the reader window
 * End = Approximate or guess the total number of pages
 *
-* Next edit lines 73 and 77 to adjust the boundaries of how the script extracts the page from the ALT+PRINTSCREEN of the "AppTitle" window (tip: use AutoIt3 Window Spy).
+* Next edit lines 91 and 95 to adjust the boundaries of how the script extracts the page from the ALT+PRINTSCREEN of the "AppTitle" window (tip: use AutoIt3 Window Spy).
 * 
-* If you want high resolution images keep lines 118 to 127, otherwise just comment them out.
+* If you want high resolution images keep lines 136 to 147, otherwise just comment them out.
 *
 * Once everything is configured give it a run to watch it extract each frame and save it as either a BMP or a JPG. If the script goes beserk and it's not working properly hit CTRL+C to break execution.
 * 
@@ -34,7 +36,6 @@ Hotkey, Pause, Pause
 SetTitleMatchMode 2
 SetTitleMatchMode Slow
 
-
 ;Add a pre-created directory name for the document in .\user\Pictures
 DocTitle = SOME_FOLDER_NAME
 
@@ -44,17 +45,16 @@ AppTitle = Window title
 DrawingTitle = Untitled - Paint
 Start = 1
 End = 360
-CorrectX = 0
-CorrectY = 0
 
-
+;
 ;Setup paths
-EnvGet, UserDir, USERPROFILE
-CDir := UserDir . "\\Pictures\\" . DocTitle . "\\"
+;
 
-;Need this to make sure the images are the right size
+;Necessary to make sure the images are the right size
 IrfanView = "C:\\app\\players and viewers\\imaging\\IrfanView\\i_view32.exe"
 
+EnvGet, UserDir, USERPROFILE
+CDir := UserDir . "\\Pictures\\" . DocTitle . "\\"
 
 
 LoopCount := End - Start
@@ -205,8 +205,9 @@ DimensionsAccurate()
 	global CDir
 	global IrfanView
 	global File
-	global CorrectX
-	global CorrectY
+	
+	static CorrectX = 0
+	static CorrectY = 0
 	
 	Info := CDir . "info.txt"
 	Dims := CDir . "dims.txt"
