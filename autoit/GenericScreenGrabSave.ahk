@@ -34,11 +34,28 @@ Hotkey, Pause, Pause
 SetTitleMatchMode 2
 SetTitleMatchMode Slow
 
-DocTitle = Partial directory name for document ;Add a pre-created directory name for the document in .\user\Pictures
-AppTitle = Window title ;Partial title of the program (firefox/acrobat/etc) that contains the document to copy
+
+;Add a pre-created directory name for the document in .\user\Pictures
+DocTitle = SOME_FOLDER_NAME
+
+;Partial title of the program (firefox/acrobat/etc) that contains the document to copy
+AppTitle = Window title
+
 DrawingTitle = Untitled - Paint
-Start = 360
-End = 361
+Start = 1
+End = 360
+CorrectX = 0
+CorrectY = 0
+
+
+;Setup paths
+EnvGet, UserDir, USERPROFILE
+CDir := UserDir . "\\Pictures\\" . DocTitle . "\\"
+
+;Need this to make sure the images are the right size
+IrfanView = "C:\\app\\players and viewers\\imaging\\IrfanView\\i_view32.exe"
+
+
 
 LoopCount := End - Start
 ;MsgBox %LoopCount%
@@ -51,6 +68,7 @@ WinWaitActive, %AppTitle%,
 
 Loop, %LoopCount%
 {
+File := CDir . Counter . ".bmp"
 ; 
 ;Grab a screen cap of the %AppTitle% Reader Window. 
 ;
@@ -70,11 +88,11 @@ Sleep, 100
 ;
 ;Create a selection rectangle around the part that represents the page to remove the unnecessary UI elements like the menu.
 ;
-MouseClick, left,  202,  184,	, ,D
+MouseClick, left,  81,  186,	, ,D
 Sleep, 100
 Send, {WheelDown 2}
 Sleep, 200
-MouseClick, left,  890, 1090, , ,U
+MouseClick, left,  884, 1277, , ,U
 
 ;
 ;Cuts the selection rectangle out of the canvas
@@ -117,11 +135,13 @@ WinWaitActive, Save As,
 ;
 Send, {Tab}
 Sleep, 200
+Send, 2	
 Send, 2
-Send, 2
+Sleep, 200
 
 ;
 ;Navigates back to the textbox, pastes in the directory name, and sends enter
+;IMPORTANT: Sometimes it seems to need 12 tabs rather than 11 (not sure why)
 ;
 Send, {Tab 11}
 Sleep, 200
@@ -135,11 +155,20 @@ Send, {Tab 2}
 Send, %Counter%{ENTER}
 Sleep, 300
 
+Sleep, 1000
+accurate := DimensionsAccurate()
+if (accurate = false) {
+	FileDelete, %File%
+	LoopCount += 1
+}
+
 ;
 ;Increment the page number
 ;
-Counter += 1
-Counter := SubStr("0000" . Counter, -3)
+if (accurate = true) {
+	Counter += 1
+	Counter := SubStr("0000" . Counter, -3)
+}
 
 ;
 ;Wait to make sure the save has finished and then navigates back to the "AppTitle" reader.
@@ -158,7 +187,9 @@ WinWaitActive, %AppTitle%,
 ;
 MouseClick, left,  301,  109
 Sleep, 100
-Send, {PgDn}
+if(accurate = true) {
+	Send, {PgDn}
+}
 Sleep, 1000
 }
 
@@ -168,3 +199,43 @@ ExitApp
 
 Pause:
 Pause, Toggle
+
+DimensionsAccurate()
+{
+	global CDir
+	global IrfanView
+	global File
+	global CorrectX
+	global CorrectY
+	
+	Info := CDir . "info.txt"
+	Dims := CDir . "dims.txt"
+	
+	;Run Irfanview on %File%
+	;i_view32 %File% /info=%Info%
+	RunWait, %comspec% /c %IrfanView% %File% /info=%Info%, CDir, Min
+	
+	;Run findstr
+	;findstr /I "image dim" %Info% > %Dims%
+	RunWait, %comspec% /c findstr /I "image dim" %Info% > %Dims%, CDir, Min
+	
+	FileRead, Contents, %Dims%
+	
+	StringTrimLeft, Contents, Contents, 19
+	StringTrimRight, Contents, Contents, 15
+	StringSplit, wh, Contents, x, %A_Space%%A_Tab%
+	
+	if (CorrectX = 0) {
+		CorrectX = %wh1%
+		MsgBox, The width is %wh1%
+	}
+	if (CorrectY = 0) { 
+		CorrectY = %wh2%
+		MsgBox, The height is %wh2%
+	} 
+	
+	if (wh1 <> CorrectX or wh2 <> CorrectY) {
+		return false
+	}
+	return true
+}
