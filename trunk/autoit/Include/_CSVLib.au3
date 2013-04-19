@@ -126,22 +126,32 @@ Func _CSVFileReadRecords($pFullPath)
 		Return 0
 	EndIf
 	; extract redords
-	While 1
-		$lCurrentLine = FileReadLine($lCVSFileHandle)
-		If @error = -1 Then ; end of file reached thus exit the loop
-			ExitLoop
-		ElseIf @error = 1 Then ; Reading error, file open errors subsumed in FileOpen() above.
-			FileClose($lCVSFileHandle)
-			SetError(3)
-			$lRecords[0] = 0
-			Return 0
-		EndIf
-		ReDim $lRecords[UBound($lRecords) + 1]
-		$lRecords[UBound($lRecords) - 1] = $lCurrentLine
-	WEnd
+	$buffer = FileRead($lCVSFileHandle)
+	If @error = 1 Then ; Reading error, file open errors subsumed in FileOpen() above.
+		FileClose($lCVSFileHandle)
+		SetError(3)
+		$lRecords[0] = 0
+		Return 0
+	EndIf
+	$lRecords = StringSplit($buffer, @CRLF, 1)
+	;ReDim $lRecords[UBound($lRecords) + 1]
+	;_ArrayDisplay($lRecords, 'The second column')
+	;While 1
+		;$lCurrentLine = FileReadLine($lCVSFileHandle)
+		;If @error = -1 Then ; end of file reached thus exit the loop
+		;	ExitLoop
+		;ElseIf @error = 1 Then ; Reading error, file open errors subsumed in FileOpen() above.
+		;	FileClose($lCVSFileHandle)
+		;	SetError(3)
+		;	$lRecords[0] = 0
+		;	Return 0
+		;EndIf
+		;ReDim $lRecords[UBound($lRecords) + 1]
+		;$lRecords[UBound($lRecords) - 1] = $lCurrentLine
+	;WEnd
 	FileClose($lCVSFileHandle)
 	; set the record count
-	$lRecords[0] = UBound($lRecords) - 1
+	;$lRecords[0] = UBound($lRecords) - 1
 	Return $lRecords
 EndFunc   ;==>_CSVFileReadRecords
 
@@ -1820,24 +1830,27 @@ Func _CSVSearch($pRecords, $pSearchStr, $pDelimiter = -1, $pEnclose = -1, $pCase
 	EndIf
 	If IsArray($pRecords) Then ; case array
 		For $i = 1 To UBound($pRecords) - 1 Step 1
-			$lFields = _CSVRecordGetFields($pRecords[$i], $pDelimiter, $pEnclose)
-			If @error Then
-				SetError(2, @error)
-				Return 0
-			EndIf
-			For $j = 1 To UBound($lFields) - 1 Step 1
+			For $j = 1 To 1   ;UBound($lFields) - 1 Step 1	;1
 				If $pMode = 1 Then
 					If Not _CSVConvertFieldToString($lFields[$j], $pEnclose) Then
 						SetError(3, @extended)
 						Return 0
 					EndIf
 				EndIf
-				If StringInStr($lFields[$j], $pSearchStr, $pCaseSense) Then
+				;If StringInStr($lFields[$j], $pSearchStr, $pCaseSense) Then
+				If StringInStr($pRecords[$i], $pSearchStr, $pCaseSense) Then
 					ReDim $lResult[UBound($lResult) + 1][4]
-					$lResult[UBound($lResult) - 1][0] = $i ; record num
-					$lResult[UBound($lResult) - 1][1] = $j ; col num
-					$lResult[UBound($lResult) - 1][2] = $pRecords[$i] ; record
-					$lResult[UBound($lResult) - 1][3] = $lFields[$j] ; field
+					Local $max = UBound($lResult)
+					$lResult[$max - 1][0] = $i ; record num
+					$lResult[$max - 1][1] = $j ; col num
+					$lResult[$max - 1][2] = $pRecords[$i] ; record
+					$lFields = _CSVRecordGetFields($pRecords[$i], $pDelimiter, $pEnclose)
+					If @error Then
+						SetError(2, @error)
+						Return 0
+					EndIf
+					$lResult[$max - 1][3] = $lFields[$j] ; field
+					ExitLoop 2
 				EndIf
 			Next
 		Next
