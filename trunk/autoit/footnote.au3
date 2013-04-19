@@ -76,7 +76,7 @@
 ;#include <nomadmemory.au3>
 ;#include <Console.au3>
 #include <misc.au3>
-#include "_CSVLib.au3"
+#include ".\Include\_CSVLib.au3"
 
 ;for about
 #include <StaticConstants.au3>
