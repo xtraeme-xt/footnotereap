@@ -67,7 +67,7 @@
 ;--------------------------------------------------------------------------------
 
 ;For long/automated runs /w no interaction 60 is a good value. When actively debugging use 0.
-Global $gAssertTimeout = 0		
+Global $gAssertTimeout = 60	
 Global $gLoggerTimeout = 0		
 
 
