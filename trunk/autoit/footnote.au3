@@ -96,7 +96,7 @@
 
 ;----------------- Global Definitions -----------------
 Const $version = "0.0.1.5"
-Const $buildnum = "1 (0.0.1.4 b3 r90)"
+Const $buildnum = "1 (0.0.1.4 b8 r92)"
 
 Dim $answer = 0
 Global $gNT = 1
@@ -1384,18 +1384,26 @@ Opt("WinTitleMatchMode", 2)
 ;if($gLoggerEnabled = "-1") then RegWrite($gKeyName, $gLoggerEnabledRegSz, "REG_DWORD", false)
 ;if($gLoggerEnabled) then _Console_Alloc()
 
-WinActivate("cmd.exe")
 Logger($EUSER, "FootnoteReap ver: " & $version, false)
 Logger($EUSER, "Build number: " & $buildnum, false)
 
 $debug = OnOffOrError($gKeyName, $gDebugRegSz)
 if($debug = "-1") then 
-	RegWrite($gKeyName, $gDebugRegSz, "REG_DWORD", false)
-elseif($debug = 1) Then
-	$gLoggerIgnoreLevel = $ENOTHING
-	Dim $exceptionArray[2] = [$EASSERT, $EINFINITELOOPDBG]
-	SetLoggerIgnoreException($exceptionArray, $EADD)
+    $gDebug = false
+	RegWrite($gKeyName, $gDebugRegSz, "REG_DWORD", $gDebug)
+ Else
+	$gDebug = $debug
+    if($gDebug = true) Then	
+	   $gLoggerIgnoreLevel = $ENOTHING
+	   Dim $exceptionArray[2] = [$EASSERT, $EINFINITELOOPDBG]
+	   SetLoggerIgnoreException($exceptionArray, $EADD)
+    EndIf
 endif
+
+;AssertMsg("FootnoteReap" & _Iif($gDebug, "Dbg", "")) ; StringTrimRight(@ScriptName, 4) & _Iif($gDebug, "ReapDbg", "Reap"))
+
+WinActivate("cmd.exe") 								   ;For Vista
+WinActivate("FootnoteReap" & _Iif($gDebug, "Dbg", "")) ;For Win. 7
 
 Local $logIgnoreLevel = OnOffOrError($gKeyName, $gLoggerIgnoreLevelRegSz)
 if($logIgnoreLevel <> "-1") then 
