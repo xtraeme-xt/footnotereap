@@ -10,10 +10,18 @@ if NOT DEFINED GROUP set GROUP=
 if NOT DEFINED DEBUG set DEBUG=false
 
 if /I "%DEBUG%" EQU "true" (
-	cscript ".\scripts\EnableDebugMode.js" > NUL
+	cscript //E:jscript ".\scripts\EnableDebugMode.js" > NUL 
 ) ELSE (
-	cscript ".\scripts\DisableDebugMode.js" > NUL
+	cscript //E:jscript ".\scripts\DisableDebugMode.js" > NUL
 )
+REM If you get the error message below:
+REM Input Error: There is no script engine for file extension ".js".
+REM
+REM First you might want to try:
+REM assoc .js=JSFile
+REM
+REM If the association doesn't fix it. Try running:
+REM regsvr32 /s %systemroot%\system32\jscript.dll
 
 set DATETIME=%DATE:/=-%_%TIME::=.%
 set LOGFILE="log\%GROUP%\%DATETIME%_footnotereap_log.txt" 
@@ -22,7 +30,7 @@ mkdir log\%GROUP% 2> NUL
 mkdir config\%GROUP% 2> NUL
 
 reg export HKEY_CURRENT_USER\Software\FoonoteReaper ".\config\%GROUP%\%DATETIME%_begin_cfg.reg" /y
-cscript ".\scripts\InternetExplorerVersion.js" >> %LOGFILE% 
+cscript //E:jscript ".\scripts\InternetExplorerVersion.js" >> %LOGFILE% 
 echo. >> %LOGFILE% 
 reg query HKEY_CURRENT_USER\Software\FoonoteReaper >> %LOGFILE% 
 echo. >> %LOGFILE% 
