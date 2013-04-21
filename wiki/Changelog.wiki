@@ -11,7 +11,7 @@
 
 <hr>
 
-Head = [http://footnotereap.googlecode.com/files/FootnoteReap_v0.0.1.5.zip v0.0.1.5] (2013-04-20)
+Head = [http://code.google.com/p/footnotereap/downloads/detail?name=FootnoteReap_v0.0.1.5.zip v0.0.1.5] (2013-04-20)
   * Compatibility Build — should run on all versions of Windows 7 (see r90)
   * Found and resolved several timing issues (using bindings based on WinWaits and other definitive knowns rather than magic number timeouts in Sleep() calls - see r90) 
   * Fixed several console issues (see r92)
