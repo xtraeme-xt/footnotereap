@@ -202,7 +202,7 @@ Func StateMachine($msg)
 
 			;XTRAEME: Undo the commented block at some point ...
 		Case $msg = $GUI_EVENT_MOUSEMOVE
-			if(WinExists("The FoonoteReaper")) then
+			if(WinExists("Scribd Scraper")) then
 				;ConsoleWrite("moved ..")
 				$tempPos = WinGetPos("[TITLE:Scribd Scraper; CLASS:AutoIt v3 GUI]") ;("Scribd Scraper")
 				$tempSize = WinGetClientSize("[TITLE:Scribd Scraper; CLASS:AutoIt v3 GUI]") ;("Scribd Scraper")
@@ -305,11 +305,12 @@ Func Start()
 		Sleep(3000)
 		
 		$count = 0
+		$countmax = 7
 		$lastxrand = $gCoords[0]
 		$lastyrand = @DesktopHeight-100
 		MouseMove($lastxrand, $lastyrand)
 		
-		while (Not WinExists("Select location") and Not WinExists("Save Image") and $count <= 7)
+		while (Not WinExists("Select location") and Not WinExists("Save Image") and $count <= $countmax)
 			Send("{ESC}")
 			Sleep(100)
 			MouseClick("right")
@@ -328,7 +329,7 @@ Func Start()
 			endif
 		WEnd
 		
-		if($count < 7) then
+		if($count < ($countmax+1)) then
 			$paddedNum = GetPaddedNum($num, $maxnum, $padnum)
 			Do
 				Send($paddedNum)
