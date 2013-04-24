@@ -96,17 +96,18 @@ Func ValidFootnotePage($testString = "")
  EndFunc   ;==>ValidFootnotePage
  
  
+ Global Enum Step +2 $EENABLE = 0, $EDISABLE = 1
  Func _EnableOrDisableEntireImageDialog($state, $bForce = false)
 	Logger($ETRACE, "_EnableOrDisableEntireImageDialog()", false)
 	Dim $defaultButtonValues[2] = [0, 0]
 	if(Not $bForce) Then
 		If(($gSaveImageDialogUp = true and $state = true) Or _
-				($gSaveImageDialogUp = false and $state = false)) then
-			return false
+		   ($gSaveImageDialogUp = false and $state = false)) then
+			   return false
 		EndIf
 	Endif
-	if(($gDownloadButton[0] = $defaultButtonValues[0] and $gDownloadButton[1] = $defaultButtonValues[1]) Or _ 
-		NOT $gPositionsValid) then
+	if(($gDownloadButton[0] = $defaultButtonValues[0] and $gDownloadButton[1] = $defaultButtonValues[1]) _
+		Or NOT $gPositionsValid) then
 		  return False
 	EndIf
 	$gSaveImageDialogUp = $state
@@ -162,11 +163,16 @@ Func IsSaveImageDialogUp($automated = false, $count = 0, $timeout = 60)
 					;ConsoleWrite("case #2" & @CRLF)
 					;click and see if we get a dialog. If so it was up. Now lets reenable it.
 					MouseClick("left", $gEntireImageButton[0], $gEntireImageButton[1])
-					Sleep(600 * $gSleepMultiplier)
+					Sleep(1000 * $gSleepMultiplier)
+					
+					;Note: Remember we're trying to see if we can get the box up. If we can then we know
+					;      once we hit "Cancel" that "Entire Image" is no longer up!
 					If(WinExists($label_select_location) = true Or _    ;"Select location for download") = true Or _
 					   WinExists($label_save_as) = true ) Then 			;by www.fold3.com
+					    WinActivate($label_select_location)
+						WinActivate($label_save_as)
 						Send("{Tab}{Tab}{Tab}{ENTER}", 0)
-						Sleep(100 * $gSleepMultiplier)
+						Sleep(200 * $gSleepMultiplier)
 						$gSaveImageDialogUp = false
 						$gIsSaveImageDialogUpTries = $gIsSaveImageDialogUpTries2 = 0
 						return false ;We can be confident about our choice now.
