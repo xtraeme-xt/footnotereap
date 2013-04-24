@@ -96,7 +96,7 @@
 
 ;----------------- Global Definitions -----------------
 Const $version = "0.0.1.5"
-Const $buildnum = "1 (0.0.1.4 b8 r92)"
+Const $buildnum = "3"
 
 Dim $answer = 0
 Global $gNT = 1
@@ -1416,7 +1416,7 @@ SetLoggerIgnoreLevel($gLoggerIgnoreLevel, true)
 
 ;this has to happen early for all the functions to get the benefit of it.
 
-InitializeOrReadRegistryEntry($gKeyName, $gSleepMultiplierRegSz, $gSleepMultiplier, "REG_DWORD")
+InitializeOrReadRegistryEntry($gKeyName, $gSleepMultiplierRegSz, $gSleepMultiplier, "REG_SZ")
 InitializeOrReadRegistryEntry($gKeyName, $gWaitDelayRegSz, $gWaitDelay, "REG_DWORD")
 InitializeOrReadRegistryEntry($gKeyName, $gSendKeyDelaySz, $gSendKeyDelay, "REG_DWORD")
 InitializeOrReadRegistryEntry($gKeyName, $gSendKeyDownDelaySz, $gSendKeyDownDelay, "REG_DWORD")
