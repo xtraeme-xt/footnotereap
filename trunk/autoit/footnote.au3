@@ -96,7 +96,7 @@
 
 ;----------------- Global Definitions -----------------
 Const $version = "0.0.1.5"
-Const $buildnum = "3"
+Const $buildnum = "9"
 
 Dim $answer = 0
 Global $gNT = 1
@@ -540,7 +540,9 @@ Func StartDownloadImage()
 	Local $clip = ""
 	Local $dir = ""
 	Local $lastFileSize = 0
+	local $lastFileTime = ""
 	Local $currentFileSize = 0
+	Local $currentFileTime = ""
 	Local $origsecs = 0
 	Local $count = 0
 	Local $retCode = $ENODOC_NOPAGE_ERROR 
@@ -831,7 +833,11 @@ Func StartDownloadImage()
 		Local $counter = 0
 		do 
 			$lastFileSize = $currentFileSize
+			$lastFileTime = $currentFileTime
+			sleep(360 * $gSleepMultiplier)
+			
 			$currentFileSize = FileGetSize($dir & "\" & $clip)	
+			$currentFileTime = FileGetTime($dir & "\" & $clip, 0, 1)
 			if($currentFileSize < 10000 AND $counter < 10000) then ;used to be 19456, 15456
 				;infinite loop bug occurs when it's not writing to disk. So $currentFileSize keeps getting set to 0
 				$counter += 1
@@ -852,7 +858,7 @@ Func StartDownloadImage()
 			;creating a few "text" loop patterns will help me locate where we're getting stuck
 			Logger($EINFINITELOOPDBG, ".", false) 
 			;ConsoleWrite("currentFileSize: " & $currentFileSize & ", lastFileSize: " & $lastFileSize & @CRLF)
-		Until($lastFileSize = $currentFileSize)
+		Until($lastFileSize = $currentFileSize and StringCompare($lastFileTime, $currentFileTime) = 0)
 		Logger($EUSER, "Downloading '" & $clip & "' took " & _DateDiff('s', "2011/07/01 00:00:00", _NowCalc()) - $origsecs & " seconds to complete", false)
 		if($retCode <> $ENEWDOC) then $retCode = $ENEWPAGE
 	EndIf
