@@ -31,8 +31,10 @@ Func GetDirectoryNameFromURL($url)
 	Logger($ETRACE, "GetDirectoryNameFromURL(" & $url & ")", false)
 	;strlen(http://www.footnote.com/image/#1) = 33
 	;strlen(http://www.fold3.com/image/#1 = 30
-	Local $len = StringLen($gBaseURL & "image/#1") + 1
-	Local $id = StringTrimLeft($url, $len)	;gCurrentURL
+	$id = StringRegExpMatch($url, "(?U).*/\#1/(\d+)/", 1, 0)
+	;AssertMsg($id & "\n" & $url)
+	;Local $len = StringLen($gBaseURL & "image/#1") + 1
+	;Local $id = StringTrimLeft($url, $len)	;gCurrentURL
 	Local $array = 0
 	Local $dir = ""
 	Local $ret = 0 
@@ -103,12 +105,21 @@ Func GetDirectoryNameFromURL($url)
 		;ConsoleWrite($incident & @CRLF)
 		if($incident <> "") Then
 			$location = $location & " (#" & $incident & ")"
+		Else
+			$incident = StringRegExpMatch($bodyText, "Incident Number:\s*(.\w+.)", 1, 0, "")
+			if(StringCompare($incident, "[illegible]", false) = 0) Then
+				$location = $location & " (#" & $incident & ")"
+			endif
 		endif
-		$location = StringRegExpReplace($location, "&", "and")
-		$location = StringRegExpReplace($location, '"', "''")
+
 		;SetError(1)
 	endif
-	
+
+	;Since the CSV may have invalid data as well we clean up the location here.
+	$location = StringRegExpReplace($location, "\\", "-")
+	$location = StringRegExpReplace($location, "/", "-")
+	$location = StringRegExpReplace($location, "&", "and")
+	$location = StringRegExpReplace($location, '"', "''")
 	;Windows doesn't allow files with periods and no subsequent characters at the end of the filename.
 	$location = StringRegExpReplace($location, "(?m)\.$", "")
 	
