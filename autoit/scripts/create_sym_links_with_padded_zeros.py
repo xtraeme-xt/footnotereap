@@ -59,6 +59,9 @@ class CSLPZParser(argparse.ArgumentParser):
         sys.exit(error)
 
 
+#Static Path to Fold3
+path_to_fold3        = '' #'G:/F/Media/__By Subject/Speculative/UFOs/Media/Websites/foonote.com' 
+
 text_desc = ("Creates a new parent directory with the base name plus '- browse' (ex. 'footnote.com' becomes 'footnote.com - browse') and "
             "sym-links the newly named files to the originals files. The largest page number (ex. Page 203) is used to pad smaller page "
             "values with the appropriate number of zeros (ex. 'Page 1' becomes 'Page 001').")
@@ -69,27 +72,32 @@ parser.add_argument('-q', '--quiet', action='store_true', help="quiet (no output
 parser.add_argument('-v', '--verbose', action='count', default=0, help="increase output verbosity")
 args = parser.parse_args()
 
+token_file_re = re.compile(r'page (\d+)\.\w{3}', re.IGNORECASE)
+token_dir_re  = re.compile(r'[\/|\\](.{4}\..{2} \- (\d+).*$)', re.IGNORECASE) 
+
 if(args.path):
     if(os.path.isdir(args.path)):
         path_to_fold3 = os.path.normpath(args.path)
     else:
         parser.error(1, "Fold3 Path is invalid: " + args.path)
 else:
-    path_to_fold3        = 'G:/F/Media/__By Subject/Speculative/UFOs/Media/Websites/footnote.com' 
     if(not os.path.isdir(path_to_fold3)):
-        parser.error(1, "No Fold3 Path found")
+        cwddir = os.path.dirname(os.path.realpath(__file__))
+        found_fold3_dir = False
+        for subdir, dirs, files in os.walk(cwddir):
+            d = token_dir_re.search(subdir)
+            if d is not None: 
+                found_fold3_dir = True
+                break
+        if(found_fold3_dir):
+            path_to_fold3 = cwddir
+        else:
+            parser.error(1, "No Fold3 Path found")
 
 path_to_target = os.path.join(os.path.abspath(os.path.join(path_to_fold3, os.pardir)), os.path.basename(os.path.normpath(path_to_fold3)) + " - browse")   #'G:/F/Media/__By Subject/Speculative/UFOs/Media/Websites/footnote.com - browse'
 
 rootdir = path_to_fold3
-token_file_re = re.compile(r'page (\d+)\.\w{3}', re.IGNORECASE)
-token_dir_re  = re.compile(r'[\/|\\](.{4}\..{2} \- (\d+).*$)', re.IGNORECASE) 
 rootdir_len = len(rootdir)
-
-#DEBUG CODE: TO DELETE UNNECESSARY FILES
-#path_to_fileexplorer = "C:\\app\\system\\Directory Opus\\dopus.exe"
-#count = 0
-#lastdir = ""
 
 for subdir, dirs, files in os.walk(rootdir):
     d = token_dir_re.search(subdir)    
@@ -133,18 +141,6 @@ for subdir, dirs, files in os.walk(rootdir):
                         newfile = file
                         
                     targetfile = os.path.normpath(os.path.join(targetpath, newfile))  #.replace(r"\\", r"\")
-                    
-                    #DEBUG CODE: TO DELETE UNNECESSARY FILES
-                    #if l_maxindex == 9: #"Meadow Vista" in subdir:
-                        #count = count+1 if lastdir != subdir else count
-                        #lastdir = subdir
-                        #if count >= 7:
-                            #call([path_to_fileexplorer, targetfile])  
-                        #for x in range(1, 10):
-                        #    potentialfile = os.path.normpath(os.path.join(targetpath, "Page " + str(x) + ".jpg"))
-                        #    if(os.path.exists(potentialfile)):
-                        #        os.remove(potentialfile)
-                        #break
                     
                     if(not os.path.exists(targetfile)):
                         origfile = os.path.normpath(os.path.join(subdir, file))
