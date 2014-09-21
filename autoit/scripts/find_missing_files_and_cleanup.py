@@ -3,21 +3,23 @@
 # author: xtraeme
 # date: 2014/09/18
 #
-# This script does what its name suggests. In addition to finding missing files (typically
-# "Page 1.jpg" is the biggest problem due to the file system having to navigate to a new 
-# directory -- https://code.google.com/p/footnotereap/issues/detail?id=6#c8 ). It also 
-# locates misnamed files like: age1.jpg (which should be: page1.jpg). To help make it 
-# easier to clean up the mess it opens the file explorer to the diretcory with the problem
-# file and also launches the webbrowser and goes to the page where the content can be 
-# checked.
+# In addition to finding missing and misnamed files (typically "Page 1.jpg," often misnamed
+# "age1.jpg", because of how the system code navigates to a new directory -- 
+# https://code.google.com/p/footnotereap/issues/detail?id=6#c8 ). The script also makes it 
+# easier to locate out of sequence files and files that are missing between a set of two 
+# pages (e.g. "Page 2.jpg" and "Page 4.jpg" exist, but "Page 3.jpg" doesn't.) 
 #
-# To use this script set the directory to where you store the fold3 content and the path
-# to explorer.exe, dopus, total commander, or whatever you use.
+# To use the script set the directory to where you store the fold3 content and fill in the
+# path to explorer.exe, dopus, total commander, or whatever you use.
+#
+# For more serious cleanup jobs, you'll want to set:
+# cleaningup = True 
+#
+# This instructs the script to open a file explorer window to the problem directory and 
+# after that spawns a webbrowser window to the case id. This makes it easier to check 
+# whether the content is valid or if the content needs to be redownloaded.
+#
 
-#
-# TODO: 
-# 1. Add a renaming tool to put a prefix in front of the files to make it easier to browser
-#    in irfanview.
 
 import os
 import ntpath
