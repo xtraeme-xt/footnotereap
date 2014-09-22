@@ -510,7 +510,7 @@ Func SetSaveDialogDirectory($dir, $clip)
 	$timeout = $timeoutUpperBound
 	
 	Send("{ENTER}", 0)
-	Sleep(1000 * $gSleepMultiplier)
+	Sleep(2000 * $gSleepMultiplier)
 	if(WinExists($label_select_location)) then ; Select location for download")) Then
 		while(Not IsSameAsClip($clip, "{END}{SHIFTDOWN}{HOME}{SHIFTUP}") and $timeout <> 0)
 			Send($clip, 1)

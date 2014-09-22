@@ -31,7 +31,10 @@ Func GetDirectoryNameFromURL($url)
 	Logger($ETRACE, "GetDirectoryNameFromURL(" & $url & ")", false)
 	;strlen(http://www.footnote.com/image/#1) = 33
 	;strlen(http://www.fold3.com/image/#1 = 30
-	$id = StringRegExpMatch($url, "(?U).*/\#1/(\d+)/", 1, 0)
+	
+	;2014/09/22: $id = StringRegExpMatch($url, "(?U).*/\#1/(\d+)/", 1, 0)
+	$id = StringRegExpMatch($url, "(?U).*/1/(\d+)/", 1, 0)
+	
 	;AssertMsg($id & "\n" & $url)
 	;Local $len = StringLen($gBaseURL & "image/#1") + 1
 	;Local $id = StringTrimLeft($url, $len)	;gCurrentURL
