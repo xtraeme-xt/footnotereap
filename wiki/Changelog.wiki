@@ -12,7 +12,7 @@
 <hr>
 
 Head = [http://sigsno.org/footnotereap/FootnoteReap_v0.0.1.5.1.zip v0.0.1.5.1] (2014-09-22)
-  * Fixed broken build - updated code so it's compatible with new Fold3 URLs
+  * Fixed broken build - updated code so it's compatible with new Fold3 URLs (see r103 & r104)
 
 
 [http://code.google.com/p/footnotereap/downloads/detail?name=FootnoteReap_v0.0.1.5.zip v0.0.1.5] (2013-04-20)
