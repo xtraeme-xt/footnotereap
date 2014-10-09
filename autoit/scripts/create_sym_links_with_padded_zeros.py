@@ -67,7 +67,8 @@ text_desc = ("Creates a new parent directory with the base name plus '- browse' 
             "values with the appropriate number of zeros (ex. 'Page 1' becomes 'Page 001').")
 
 parser = CSLPZParser(description = text_desc)
-parser.add_argument('path', metavar = 'path', type=str, nargs='?', help='path to fold3 data directory (default: footnote.com)')
+parser.add_argument('srcpath', metavar = 'src-path', type=str, nargs='?', help='path to fold3 data directory (default: footnote.com)')
+parser.add_argument('-d', '--dest', dest='dstpath', action='store', help='path to output link structure (default: ..)')
 parser.add_argument('-q', '--quiet', action='store_true', help="quiet (no output)")
 parser.add_argument('-v', '--verbose', action='count', default=0, help="increase output verbosity")
 args = parser.parse_args()
@@ -75,11 +76,11 @@ args = parser.parse_args()
 token_file_re = re.compile(r'page (\d+)\.\w{3}', re.IGNORECASE)
 token_dir_re  = re.compile(r'[\/|\\](.{4}\..{2} \- (\d+).*$)', re.IGNORECASE) 
 
-if(args.path):
-    if(os.path.isdir(args.path)):
-        path_to_fold3 = os.path.normpath(args.path)
+if(args.srcpath):
+    if(os.path.isdir(args.srcpath)):
+        path_to_fold3 = os.path.normpath(args.srcpath)
     else:
-        parser.error(1, "Fold3 Path is invalid: " + args.path)
+        parser.error(1, "Fold3 Path is invalid: " + args.srcpath)
 else:
     if(not os.path.isdir(path_to_fold3)):
         cwddir = os.path.dirname(os.path.realpath(__file__))
@@ -93,8 +94,14 @@ else:
             path_to_fold3 = cwddir
         else:
             parser.error(1, "No Fold3 Path found")
-
-path_to_target = os.path.join(os.path.abspath(os.path.join(path_to_fold3, os.pardir)), os.path.basename(os.path.normpath(path_to_fold3)) + " - browse")   #'G:/F/Media/__By Subject/Speculative/UFOs/Media/Websites/footnote.com - browse'
+            
+if(not args.dstpath):
+    path_to_target = os.path.join(os.path.abspath(os.path.join(path_to_fold3, os.pardir)), os.path.basename(os.path.normpath(path_to_fold3)) + " - browse")   #'G:/F/Media/__By Subject/Speculative/UFOs/Media/Websites/footnote.com - browse'
+else:
+    if(os.path.isdir(args.dstpath)):
+        path_to_target = os.path.join(args.dstpath, os.path.basename(os.path.normpath(path_to_fold3)) + " - browse")
+    else:
+        parser.error(1, "Destination path (" + args.dstpath + ") is invalid")            
 
 rootdir = path_to_fold3
 rootdir_len = len(rootdir)
