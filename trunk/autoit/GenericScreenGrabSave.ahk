@@ -51,7 +51,7 @@ End = 360
 ;
 
 ;Necessary to make sure the images are the right size
-IrfanView = "C:\\app\\players and viewers\\imaging\\IrfanView\\i_view32.exe"
+IrfanView = "C:\\app \(x86\)\\players and viewers\\imaging\\IrfanView\\i_view32.exe"
 
 EnvGet, UserDir, USERPROFILE
 CDir := UserDir . "\\Pictures\\" . DocTitle . "\\"
@@ -142,16 +142,20 @@ Sleep, 200
 ;
 ;Navigates back to the textbox, pastes in the directory name, and sends enter
 ;IMPORTANT: Sometimes it seems to need 12 tabs rather than 11 (not sure why)
+;Using Mspaint from:
+;http://www.askvg.com/how-to-get-the-good-old-ms-paint-without-ribbons-working-in-windows-7/
+;Uses 9 tabs. Also using %CDir% is better than using %DocTitle% as a more 
+;reliable path.
 ;
-Send, {Tab 11}
+Send, {Tab 9}
 Sleep, 200
-Send, %DocTitle%{ENTER}
+Send, %CDir%{ENTER}
 Sleep, 200
 
 ;
 ;Inserts the filename (which is just an incrementing sequence to indicate the page number) and saves the file to disk
 ;
-Send, {Tab 2}
+;Send, {Tab 2}
 Send, %Counter%{ENTER}
 Sleep, 300
 
