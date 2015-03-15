@@ -35,7 +35,7 @@ To run the application, you will have to have a version of Internet Explorer ins
 
 - The easiest way to enter debug mode is to run FootnoteReapDbg. To manually enable the full debug output, go to the registry (Edit → Registry Keys). Then add or edit key name "gDebug" as a REG_DWORD set to a value of 1 (or true). This will print patterns in the debug output to help locate possible race conditions. To enable all the trace and verbose output, modify gLoggerIgnoreLevel from the default 11 (user level notifications) down to 0. 
 
-- To save the debug output, launch the application with the FootnoteReapDbg.lnk shortcut. If you experience problems. First read the [ConsoleLog] faq. Next open a command line (from the start button, click "Run," type in cmd.exe) and then [navigate to the directory](http://www.wikihow.com/Change-Directories-in-Command-Prompt) where you installed the footnotereap executable. Finally start the application by typing:`
+- To save the debug output, launch the application with the FootnoteReapDbg.lnk shortcut. If you experience problems. First read the [ConsoleLog](https://code.google.com/p/footnotereap/wiki/ConsoleLog) faq. Next open a command line (from the start button, click "Run," type in cmd.exe) and then [navigate to the directory](http://www.wikihow.com/Change-Directories-in-Command-Prompt) where you installed the footnotereap executable. Finally start the application by typing:`
 
 ```footnote.exe > "%DATE:/=-%_%TIME::=.%_footnotereap_log.txt"```
 
