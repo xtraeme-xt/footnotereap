@@ -1,7 +1,5 @@
 # FootnoteReaper
 
-## Overview
-
 FootnoteReaper is a quick and dirty screen scraping macro used to download content off Fold3 (previously footnote.com). The default configuration starts the user at NARA's Blue Book archive on case #2853 (November 1945 Tom's River, New Jersey incident). This can be easily changed by navigating the browser to any other page and starting the application. For more information about the impetus behind this project see Isaac Koi's "[Massive UFO disclosure in USA: A challenge for ATS](http://www.abovetopsecret.com/forum/thread730972/pg1)." 
 
 An active discussion about the project is ongoing in "[The 154 GB NARA Blue Book Archive](http://www.abovetopsecret.com/forum/thread1032358/pg1)."
